@@ -260,8 +260,8 @@ class AIAnalysisService {
       }
 
       // 분석 가능 여부 판단
-      final canRequestAnalysis = _canRequestAnalysis(dailyData, lastAnalysisDate);
-      final daysUntilNext = _calculateDaysUntilNext(dailyData, lastAnalysisDate);
+      final canRequestAnalysis = _canRequestAnalysis(dailyData, lastAnalysisDate, userId);
+      final daysUntilNext = _calculateDaysUntilNext(dailyData, lastAnalysisDate, userId);
 
       // 평균 완료율 계산
       final avgCompletionRate = dailyData.isEmpty 
@@ -297,7 +297,12 @@ class AIAnalysisService {
     }
   }
 
-  bool _canRequestAnalysis(List<DailyProgress> dailyData, DateTime? lastAnalysisDate) {
+  bool _canRequestAnalysis(List<DailyProgress> dailyData, DateTime? lastAnalysisDate, String userId) {
+    // 관리자 계정은 항상 분석 가능
+    if (userId == 'super@root.com' || FirebaseAuth.instance.currentUser?.email == 'super@root.com') {
+      return true;
+    }
+
     // 1. 최소 7일 데이터가 있어야 함
     if (dailyData.length < 7) return false;
 
@@ -309,7 +314,12 @@ class AIAnalysisService {
     return daysSinceLastAnalysis >= 7;
   }
 
-  int _calculateDaysUntilNext(List<DailyProgress> dailyData, DateTime? lastAnalysisDate) {
+  int _calculateDaysUntilNext(List<DailyProgress> dailyData, DateTime? lastAnalysisDate, String userId) {
+    // 관리자 계정은 항상 0일 (즉시 가능)
+    if (userId == 'super@root.com' || FirebaseAuth.instance.currentUser?.email == 'super@root.com') {
+      return 0;
+    }
+
     if (dailyData.length < 7) {
       return 7 - dailyData.length;
     }
@@ -322,8 +332,9 @@ class AIAnalysisService {
 
   Future<String> generatePersonalizedAdvice(UserAnalytics analytics, List<Todo> currentTodos) async {
     try {
-      // AI 분석 요청 가능 여부 확인
-      if (!analytics.canRequestAnalysis) {
+      // 관리자 계정이 아닌 경우에만 제한 확인
+      final isAdmin = FirebaseAuth.instance.currentUser?.email == 'super@root.com';
+      if (!isAdmin && !analytics.canRequestAnalysis) {
         throw Exception('아직 AI 분석을 요청할 수 없습니다. ${analytics.daysUntilNextAnalysis}일 후에 다시 시도해주세요.');
       }
 
@@ -333,7 +344,10 @@ class AIAnalysisService {
       final response = await _model.generateContent(content);
       
       // 분석 완료 후 기록 저장
-      await _saveAnalysisHistory(analytics.dailyData.first.date);
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        await _saveAnalysisHistory(user.uid);
+      }
       
       return response.text ?? '조언을 생성할 수 없습니다.';
     } catch (e) {
