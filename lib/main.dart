@@ -11,6 +11,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_options.dart';
 
+// AI
+import 'package:google_generative_ai/google_generative_ai.dart';
+
 // ───────────────── Entry
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,6 +33,7 @@ class MyAppRoot extends StatelessWidget {
         '/': (_) => const AuthGate(),
         '/home': (_) => const HomePage(),
         '/login': (_) => const EmailLoginPage(),
+        '/ai-advice': (_) => const AIAdvicePage(),
       },
       initialRoute: '/',
       debugShowCheckedModeBanner: false,
@@ -90,6 +94,151 @@ class Todo {
     'dueDate': dueDate?.toIso8601String(),
     'done': done,
   };
+}
+
+// ─────────────── AI Analysis Models
+class CompletedTask {
+  final String title;
+  final String part;
+  final DateTime completedAt;
+  final DateTime? dueDate;
+  final bool wasOverdue;
+
+  CompletedTask({
+    required this.title,
+    required this.part,
+    required this.completedAt,
+    this.dueDate,
+    required this.wasOverdue,
+  });
+
+  factory CompletedTask.fromFirestore(Map<String, dynamic> data) {
+    final completedAt = (data['completedAt'] as Timestamp).toDate();
+    final dueDate = data['dueDate'] != null 
+        ? (data['dueDate'] as Timestamp).toDate() 
+        : null;
+    
+    return CompletedTask(
+      title: data['title'] as String,
+      part: data['part'] as String,
+      completedAt: completedAt,
+      dueDate: dueDate,
+      wasOverdue: dueDate != null && completedAt.isAfter(dueDate),
+    );
+  }
+}
+
+class UserAnalytics {
+  final int totalCompleted;
+  final int overdueCompleted;
+  final Map<String, int> partStats;
+  final List<CompletedTask> recentTasks;
+  final double completionRate;
+
+  UserAnalytics({
+    required this.totalCompleted,
+    required this.overdueCompleted,
+    required this.partStats,
+    required this.recentTasks,
+    required this.completionRate,
+  });
+}
+
+// ─────────────── AI Service
+class AIAnalysisService {
+  static const String _apiKey = 'YOUR_GEMINI_API_KEY_HERE'; // API 키는 환경변수로 관리해야 합니다
+  late final GenerativeModel _model;
+
+  AIAnalysisService() {
+    _model = GenerativeModel(
+      model: 'gemini-1.5-flash',
+      apiKey: _apiKey,
+    );
+  }
+
+  Future<UserAnalytics> analyzeUserData(String userId) async {
+    try {
+      final now = DateTime.now();
+      final weekAgo = now.subtract(const Duration(days: 7));
+
+      // Firestore에서 지난 1주일 완료된 작업 조회
+      final snapshot = await FirebaseFirestore.instance
+          .collection('completed_tasks')
+          .where('userId', isEqualTo: userId)
+          .where('completedAt', isGreaterThan: Timestamp.fromDate(weekAgo))
+          .orderBy('completedAt', descending: true)
+          .get();
+
+      final completedTasks = snapshot.docs
+          .map((doc) => CompletedTask.fromFirestore(doc.data()))
+          .toList();
+
+      // 파트별 통계 계산
+      final partStats = <String, int>{};
+      var overdueCount = 0;
+
+      for (final task in completedTasks) {
+        partStats[task.part] = (partStats[task.part] ?? 0) + 1;
+        if (task.wasOverdue) overdueCount++;
+      }
+
+      // 현재 미완료 작업들도 분석에 포함 (로컬 데이터와 비교)
+      final completionRate = completedTasks.length / (completedTasks.length + 1); // 임시 계산
+
+      return UserAnalytics(
+        totalCompleted: completedTasks.length,
+        overdueCompleted: overdueCount,
+        partStats: partStats,
+        recentTasks: completedTasks,
+        completionRate: completionRate,
+      );
+    } catch (e) {
+      throw Exception('데이터 분석 실패: $e');
+    }
+  }
+
+  Future<String> generatePersonalizedAdvice(UserAnalytics analytics, List<Todo> currentTodos) async {
+    try {
+      final prompt = _buildAnalysisPrompt(analytics, currentTodos);
+      
+      final content = [Content.text(prompt)];
+      final response = await _model.generateContent(content);
+      
+      return response.text ?? '조언을 생성할 수 없습니다.';
+    } catch (e) {
+      throw Exception('AI 조언 생성 실패: $e');
+    }
+  }
+
+  String _buildAnalysisPrompt(UserAnalytics analytics, List<Todo> currentTodos) {
+    final buffer = StringBuffer();
+    buffer.writeln('당신은 개인 생산성 코치입니다. 다음 사용자 데이터를 분석하여 개인화된 조언을 해주세요.');
+    buffer.writeln('');
+    buffer.writeln('【지난 1주일 완료 현황】');
+    buffer.writeln('- 총 완료: ${analytics.totalCompleted}개');
+    buffer.writeln('- 지연 완료: ${analytics.overdueCompleted}개');
+    buffer.writeln('- 완료율: ${(analytics.completionRate * 100).toStringAsFixed(1)}%');
+    buffer.writeln('');
+    buffer.writeln('【파트별 완료 현황】');
+    analytics.partStats.forEach((part, count) {
+      buffer.writeln('- $part: ${count}개');
+    });
+    buffer.writeln('');
+    buffer.writeln('【현재 미완료 작업】');
+    for (final todo in currentTodos.where((t) => !t.done)) {
+      final dueText = todo.dueDate != null ? ' (마감: ${todo.dueDate!.month}/${todo.dueDate!.day})' : '';
+      buffer.writeln('- [${todo.part}] ${todo.title}$dueText');
+    }
+    buffer.writeln('');
+    buffer.writeln('이 데이터를 바탕으로 다음 항목에 대해 구체적이고 실용적인 조언을 200자 내외로 해주세요:');
+    buffer.writeln('1. 시간 관리 개선 방안');
+    buffer.writeln('2. 우선순위 설정 제안');
+    buffer.writeln('3. 다음 주 목표 추천');
+    buffer.writeln('');
+    buffer.writeln('친근하고 격려하는 톤으로 답변해 주세요.');
+
+    return buffer.toString();
+  }
 }
 
 // ─────────────── Home
@@ -227,6 +376,9 @@ class _HomePageState extends State<HomePage> {
           PopupMenuButton<String>(
             onSelected: (value) async {
               switch (value) {
+                case 'ai-advice':
+                  Navigator.pushNamed(context, '/ai-advice');
+                  break;
                 case 'settings':
                   Navigator.push(
                     context,
@@ -249,6 +401,11 @@ class _HomePageState extends State<HomePage> {
               }
             },
             itemBuilder: (context) => const [
+              PopupMenuItem(value: 'ai-advice', child: Row(children: [
+                Icon(Icons.psychology, size: 18),
+                SizedBox(width: 8),
+                Text('AI 조언'),
+              ])),
               PopupMenuItem(value: 'settings', child: Text('설정')),
               PopupMenuItem(value: 'logout', child: Text('로그아웃')),
               PopupMenuItem(value: 'color', child: Text('컬러 선택')),
@@ -653,6 +810,267 @@ class ColorPickerPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('컬러 선택')),
       body: const Center(child: Text('컬러 선택(자리만)')),
+    );
+  }
+}
+
+// ─────────────── AI Advice Page
+class AIAdvicePage extends StatefulWidget {
+  const AIAdvicePage({super.key});
+  @override
+  State<AIAdvicePage> createState() => _AIAdvicePageState();
+}
+
+class _AIAdvicePageState extends State<AIAdvicePage> {
+  final AIAnalysisService _aiService = AIAnalysisService();
+  UserAnalytics? _analytics;
+  String? _advice;
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAIAdvice();
+  }
+
+  Future<void> _loadAIAdvice() async {
+    if (_loading) return;
+    
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception('로그인이 필요합니다.');
+      }
+
+      // 현재 사용자의 로컬 할 일 목록 불러오기
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('todos');
+      List<Todo> currentTodos = [];
+      if (raw != null) {
+        final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
+        currentTodos = list.map(Todo.fromMap).toList();
+      }
+
+      // 사용자 데이터 분석
+      final analytics = await _aiService.analyzeUserData(user.uid);
+      
+      // AI 조언 생성
+      final advice = await _aiService.generatePersonalizedAdvice(analytics, currentTodos);
+
+      setState(() {
+        _analytics = analytics;
+        _advice = advice;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+      });
+    } finally {
+      setState(() {
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final titleStyle = GoogleFonts.dongle(
+      color: Colors.black,
+      fontSize: 32,
+      fontWeight: FontWeight.bold,
+    );
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('AI 조언', style: titleStyle),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadAIAdvice,
+            tooltip: '새로고침',
+          ),
+        ],
+      ),
+      body: _loading
+          ? const Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('AI가 분석 중입니다...', style: TextStyle(fontSize: 16)),
+                ],
+              ),
+            )
+          : _error != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.error_outline, size: 64, color: Colors.red),
+                        const SizedBox(height: 16),
+                        Text(
+                          '오류가 발생했습니다',
+                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(_error!, textAlign: TextAlign.center),
+                        const SizedBox(height: 20),
+                        ElevatedButton(
+                          onPressed: _loadAIAdvice,
+                          child: const Text('다시 시도'),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 분석 결과 섹션
+                      if (_analytics != null) ...[
+                        _buildAnalyticsCard(_analytics!),
+                        const SizedBox(height: 20),
+                      ],
+                      
+                      // AI 조언 섹션
+                      if (_advice != null) _buildAdviceCard(_advice!),
+                      
+                      // 빈 상태
+                      if (_analytics == null && _advice == null)
+                        const Center(
+                          child: Column(
+                            children: [
+                              Icon(Icons.psychology_outlined, size: 64, color: Colors.grey),
+                              SizedBox(height: 16),
+                              Text('아직 분석할 데이터가 부족합니다.', style: TextStyle(fontSize: 16)),
+                              Text('할 일을 완료하고 다시 확인해보세요!', style: TextStyle(color: Colors.grey)),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+    );
+  }
+
+  Widget _buildAnalyticsCard(UserAnalytics analytics) {
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.analytics, color: Colors.blue),
+                const SizedBox(width: 8),
+                const Text('지난 1주일 분석', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const Divider(),
+            const SizedBox(height: 12),
+            
+            // 전체 통계
+            Row(
+              children: [
+                Expanded(
+                  child: _buildStatItem('완료한 일', '${analytics.totalCompleted}개', Colors.green),
+                ),
+                Expanded(
+                  child: _buildStatItem('지연 완료', '${analytics.overdueCompleted}개', Colors.orange),
+                ),
+                Expanded(
+                  child: _buildStatItem('완료율', '${(analytics.completionRate * 100).toStringAsFixed(0)}%', Colors.blue),
+                ),
+              ],
+            ),
+            
+            const SizedBox(height: 16),
+            
+            // 파트별 통계
+            if (analytics.partStats.isNotEmpty) ...[
+              const Text('파트별 완료 현황', style: TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: analytics.partStats.entries.map((entry) {
+                  return Chip(
+                    label: Text('${entry.key} ${entry.value}개'),
+                    backgroundColor: Colors.blue.withOpacity(0.1),
+                  );
+                }).toList(),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatItem(String label, String value, Color color) {
+    return Column(
+      children: [
+        Text(value, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: color)),
+        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+      ],
+    );
+  }
+
+  Widget _buildAdviceCard(String advice) {
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.psychology, color: Colors.purple),
+                const SizedBox(width: 8),
+                const Text('AI의 개인화된 조언', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const Divider(),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.purple.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.purple.withOpacity(0.2)),
+              ),
+              child: Text(
+                advice,
+                style: const TextStyle(fontSize: 16, height: 1.6),
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Row(
+              children: [
+                Icon(Icons.lightbulb_outline, size: 16, color: Colors.grey),
+                SizedBox(width: 4),
+                Text('AI가 당신의 패턴을 분석해 맞춤 조언을 제공했어요', style: TextStyle(color: Colors.grey, fontSize: 12)),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
