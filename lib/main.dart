@@ -97,6 +97,42 @@ class Todo {
 }
 
 // ─────────────── AI Analysis Models
+class DailyProgress {
+  final String date; // YYYY-MM-DD 형식
+  final int totalTodos;
+  final int completedTodos;
+  final Map<String, int> partProgress;
+  final DateTime recordedAt;
+
+  DailyProgress({
+    required this.date,
+    required this.totalTodos,
+    required this.completedTodos,
+    required this.partProgress,
+    required this.recordedAt,
+  });
+
+  factory DailyProgress.fromFirestore(Map<String, dynamic> data) {
+    return DailyProgress(
+      date: data['date'] as String,
+      totalTodos: data['totalTodos'] as int,
+      completedTodos: data['completedTodos'] as int,
+      partProgress: Map<String, int>.from(data['partProgress'] ?? {}),
+      recordedAt: (data['recordedAt'] as Timestamp).toDate(),
+    );
+  }
+
+  Map<String, dynamic> toFirestore() => {
+    'date': date,
+    'totalTodos': totalTodos,
+    'completedTodos': completedTodos,
+    'partProgress': partProgress,
+    'recordedAt': FieldValue.serverTimestamp(),
+  };
+
+  double get completionRate => totalTodos > 0 ? completedTodos / totalTodos : 0.0;
+}
+
 class CompletedTask {
   final String title;
   final String part;
@@ -129,18 +165,24 @@ class CompletedTask {
 }
 
 class UserAnalytics {
-  final int totalCompleted;
-  final int overdueCompleted;
-  final Map<String, int> partStats;
-  final List<CompletedTask> recentTasks;
-  final double completionRate;
+  final int totalDays;
+  final int availableDays;
+  final List<DailyProgress> dailyData;
+  final double avgCompletionRate;
+  final Map<String, double> partPerformance;
+  final bool canRequestAnalysis;
+  final DateTime? lastAnalysisDate;
+  final int daysUntilNextAnalysis;
 
   UserAnalytics({
-    required this.totalCompleted,
-    required this.overdueCompleted,
-    required this.partStats,
-    required this.recentTasks,
-    required this.completionRate,
+    required this.totalDays,
+    required this.availableDays,
+    required this.dailyData,
+    required this.avgCompletionRate,
+    required this.partPerformance,
+    required this.canRequestAnalysis,
+    this.lastAnalysisDate,
+    required this.daysUntilNextAnalysis,
   });
 }
 
@@ -156,53 +198,140 @@ class AIAnalysisService {
     );
   }
 
-  Future<UserAnalytics> analyzeUserData(String userId) async {
+  // 하루 종료 시 일일 진행률을 Firestore에 저장
+  Future<void> saveDailyProgress(String userId, List<Todo> todos) async {
     try {
       final now = DateTime.now();
-      final weekAgo = now.subtract(const Duration(days: 7));
-
-      // Firestore에서 지난 1주일 완료된 작업 조회
-      final snapshot = await FirebaseFirestore.instance
-          .collection('completed_tasks')
-          .where('userId', isEqualTo: userId)
-          .where('completedAt', isGreaterThan: Timestamp.fromDate(weekAgo))
-          .orderBy('completedAt', descending: true)
-          .get();
-
-      final completedTasks = snapshot.docs
-          .map((doc) => CompletedTask.fromFirestore(doc.data()))
-          .toList();
-
-      // 파트별 통계 계산
-      final partStats = <String, int>{};
-      var overdueCount = 0;
-
-      for (final task in completedTasks) {
-        partStats[task.part] = (partStats[task.part] ?? 0) + 1;
-        if (task.wasOverdue) overdueCount++;
+      final dateKey = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      
+      final totalTodos = todos.length;
+      final completedTodos = todos.where((t) => t.done).length;
+      
+      // 파트별 진행률 계산
+      final partProgress = <String, int>{};
+      for (final todo in todos.where((t) => t.done)) {
+        partProgress[todo.part] = (partProgress[todo.part] ?? 0) + 1;
       }
 
-      // 현재 미완료 작업들도 분석에 포함 (로컬 데이터와 비교)
-      final completionRate = completedTasks.length / (completedTasks.length + 1); // 임시 계산
+      final dailyProgress = DailyProgress(
+        date: dateKey,
+        totalTodos: totalTodos,
+        completedTodos: completedTodos,
+        partProgress: partProgress,
+        recordedAt: now,
+      );
+
+      // Firestore에 저장 (같은 날짜면 덮어쓰기)
+      await FirebaseFirestore.instance
+          .collection('daily_progress')
+          .doc('${userId}_$dateKey')
+          .set(dailyProgress.toFirestore());
+    } catch (e) {
+      print('일일 진행률 저장 실패: $e');
+    }
+  }
+
+  Future<UserAnalytics> analyzeUserData(String userId) async {
+    try {
+      // 일일 진행률 데이터 조회 (userId로 필터링하기 위해 문서 ID 패턴 사용)
+      final progressSnapshot = await FirebaseFirestore.instance
+          .collection('daily_progress')
+          .orderBy('recordedAt', descending: true)
+          .get();
+
+      // 클라이언트 측에서 userId 필터링
+      final userDocs = progressSnapshot.docs.where((doc) => doc.id.startsWith('${userId}_')).toList();
+
+      final dailyData = userDocs
+          .map((doc) => DailyProgress.fromFirestore(doc.data()))
+          .toList();
+
+      // 마지막 AI 분석 시점 조회
+      final lastAnalysisDoc = await FirebaseFirestore.instance
+          .collection('ai_analysis_history')
+          .doc(userId)
+          .get();
+
+      DateTime? lastAnalysisDate;
+      if (lastAnalysisDoc.exists) {
+        lastAnalysisDate = (lastAnalysisDoc.data()!['lastAnalysisDate'] as Timestamp).toDate();
+      }
+
+      // 분석 가능 여부 판단
+      final canRequestAnalysis = _canRequestAnalysis(dailyData, lastAnalysisDate);
+      final daysUntilNext = _calculateDaysUntilNext(dailyData, lastAnalysisDate);
+
+      // 평균 완료율 계산
+      final avgCompletionRate = dailyData.isEmpty 
+          ? 0.0 
+          : dailyData.map((d) => d.completionRate).reduce((a, b) => a + b) / dailyData.length;
+
+      // 파트별 성과 계산
+      final partPerformance = <String, double>{};
+      if (dailyData.isNotEmpty) {
+        final allParts = dailyData.expand((d) => d.partProgress.keys).toSet();
+        for (final part in allParts) {
+          final partDays = dailyData.where((d) => d.partProgress.containsKey(part)).toList();
+          if (partDays.isNotEmpty) {
+            final totalCompleted = partDays.map((d) => d.partProgress[part] ?? 0).reduce((a, b) => a + b);
+            final avgPerDay = totalCompleted / partDays.length;
+            partPerformance[part] = avgPerDay;
+          }
+        }
+      }
 
       return UserAnalytics(
-        totalCompleted: completedTasks.length,
-        overdueCompleted: overdueCount,
-        partStats: partStats,
-        recentTasks: completedTasks,
-        completionRate: completionRate,
+        totalDays: dailyData.length,
+        availableDays: dailyData.length,
+        dailyData: dailyData,
+        avgCompletionRate: avgCompletionRate,
+        partPerformance: partPerformance,
+        canRequestAnalysis: canRequestAnalysis,
+        lastAnalysisDate: lastAnalysisDate,
+        daysUntilNextAnalysis: daysUntilNext,
       );
     } catch (e) {
       throw Exception('데이터 분석 실패: $e');
     }
   }
 
+  bool _canRequestAnalysis(List<DailyProgress> dailyData, DateTime? lastAnalysisDate) {
+    // 1. 최소 7일 데이터가 있어야 함
+    if (dailyData.length < 7) return false;
+
+    // 2. 마지막 분석이 없으면 가능
+    if (lastAnalysisDate == null) return true;
+
+    // 3. 마지막 분석 후 7일이 지났어야 함
+    final daysSinceLastAnalysis = DateTime.now().difference(lastAnalysisDate).inDays;
+    return daysSinceLastAnalysis >= 7;
+  }
+
+  int _calculateDaysUntilNext(List<DailyProgress> dailyData, DateTime? lastAnalysisDate) {
+    if (dailyData.length < 7) {
+      return 7 - dailyData.length;
+    }
+
+    if (lastAnalysisDate == null) return 0;
+
+    final daysSinceLastAnalysis = DateTime.now().difference(lastAnalysisDate).inDays;
+    return daysSinceLastAnalysis >= 7 ? 0 : 7 - daysSinceLastAnalysis;
+  }
+
   Future<String> generatePersonalizedAdvice(UserAnalytics analytics, List<Todo> currentTodos) async {
     try {
+      // AI 분석 요청 가능 여부 확인
+      if (!analytics.canRequestAnalysis) {
+        throw Exception('아직 AI 분석을 요청할 수 없습니다. ${analytics.daysUntilNextAnalysis}일 후에 다시 시도해주세요.');
+      }
+
       final prompt = _buildAnalysisPrompt(analytics, currentTodos);
       
       final content = [Content.text(prompt)];
       final response = await _model.generateContent(content);
+      
+      // 분석 완료 후 기록 저장
+      await _saveAnalysisHistory(analytics.dailyData.first.date);
       
       return response.text ?? '조언을 생성할 수 없습니다.';
     } catch (e) {
@@ -210,19 +339,38 @@ class AIAnalysisService {
     }
   }
 
+  Future<void> _saveAnalysisHistory(String userId) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('ai_analysis_history')
+          .doc(userId)
+          .set({
+        'lastAnalysisDate': FieldValue.serverTimestamp(),
+        'analysisCount': FieldValue.increment(1),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      print('분석 기록 저장 실패: $e');
+    }
+  }
+
   String _buildAnalysisPrompt(UserAnalytics analytics, List<Todo> currentTodos) {
     final buffer = StringBuffer();
-    buffer.writeln('당신은 개인 생산성 코치입니다. 다음 사용자 데이터를 분석하여 개인화된 조언을 해주세요.');
+    buffer.writeln('당신은 개인 생산성 코치입니다. 다음 사용자의 ${analytics.totalDays}일간 데이터를 분석하여 개인화된 조언을 해주세요.');
     buffer.writeln('');
-    buffer.writeln('【지난 1주일 완료 현황】');
-    buffer.writeln('- 총 완료: ${analytics.totalCompleted}개');
-    buffer.writeln('- 지연 완료: ${analytics.overdueCompleted}개');
-    buffer.writeln('- 완료율: ${(analytics.completionRate * 100).toStringAsFixed(1)}%');
+    buffer.writeln('【전체 성과 분석】');
+    buffer.writeln('- 평균 완료율: ${(analytics.avgCompletionRate * 100).toStringAsFixed(1)}%');
+    buffer.writeln('- 분석 기간: ${analytics.totalDays}일');
     buffer.writeln('');
-    buffer.writeln('【파트별 완료 현황】');
-    analytics.partStats.forEach((part, count) {
-      buffer.writeln('- $part: ${count}개');
+    buffer.writeln('【파트별 평균 성과】');
+    analytics.partPerformance.forEach((part, avg) {
+      buffer.writeln('- $part: 일평균 ${avg.toStringAsFixed(1)}개 완료');
     });
+    buffer.writeln('');
+    buffer.writeln('【최근 일주일 트렌드】');
+    final recentWeek = analytics.dailyData.take(7).toList();
+    for (final day in recentWeek) {
+      buffer.writeln('- ${day.date}: ${day.completedTodos}/${day.totalTodos} (${(day.completionRate * 100).toStringAsFixed(0)}%)');
+    }
     buffer.writeln('');
     buffer.writeln('【현재 미완료 작업】');
     for (final todo in currentTodos.where((t) => !t.done)) {
@@ -230,10 +378,10 @@ class AIAnalysisService {
       buffer.writeln('- [${todo.part}] ${todo.title}$dueText');
     }
     buffer.writeln('');
-    buffer.writeln('이 데이터를 바탕으로 다음 항목에 대해 구체적이고 실용적인 조언을 200자 내외로 해주세요:');
-    buffer.writeln('1. 시간 관리 개선 방안');
-    buffer.writeln('2. 우선순위 설정 제안');
-    buffer.writeln('3. 다음 주 목표 추천');
+    buffer.writeln('이 데이터를 바탕으로 다음 항목에 대해 구체적이고 실용적인 조언을 250자 내외로 해주세요:');
+    buffer.writeln('1. 패턴 분석 및 개선점');
+    buffer.writeln('2. 강점 활용 방안'); 
+    buffer.writeln('3. 다음 주 목표 및 전략');
     buffer.writeln('');
     buffer.writeln('친근하고 격려하는 톤으로 답변해 주세요.');
 
@@ -251,6 +399,7 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   List<Todo> todos = [];
   bool _loading = true;
+  final AIAnalysisService _aiService = AIAnalysisService();
 
   int get completedCount => todos.where((t) => t.done).length;
 
@@ -258,6 +407,20 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _restore();
+  }
+
+  @override
+  void dispose() {
+    // 앱 종료 시 일일 진행률 저장
+    _saveDailyProgressIfNeeded();
+    super.dispose();
+  }
+
+  Future<void> _saveDailyProgressIfNeeded() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null && todos.isNotEmpty) {
+      await _aiService.saveDailyProgress(user.uid, todos);
+    }
   }
 
   Future<void> _persist() async {
@@ -944,11 +1107,17 @@ class _AIAdvicePageState extends State<AIAdvicePage> {
                         const SizedBox(height: 20),
                       ],
                       
+                      // AI 조언 요청 버튼
+                      if (_analytics != null) ...[
+                        _buildAnalysisRequestCard(_analytics!),
+                        const SizedBox(height: 20),
+                      ],
+                      
                       // AI 조언 섹션
                       if (_advice != null) _buildAdviceCard(_advice!),
                       
                       // 빈 상태
-                      if (_analytics == null && _advice == null)
+                      if (_analytics == null)
                         const Center(
                           child: Column(
                             children: [
@@ -977,39 +1146,44 @@ class _AIAdvicePageState extends State<AIAdvicePage> {
               children: [
                 const Icon(Icons.analytics, color: Colors.blue),
                 const SizedBox(width: 8),
-                const Text('지난 1주일 분석', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                Text('${analytics.totalDays}일간 데이터 분석', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               ],
             ),
             const Divider(),
             const SizedBox(height: 12),
             
+            // AI 분석 상태
+            _buildAnalysisStatusCard(analytics),
+            const SizedBox(height: 16),
+            
             // 전체 통계
             Row(
               children: [
                 Expanded(
-                  child: _buildStatItem('완료한 일', '${analytics.totalCompleted}개', Colors.green),
+                  child: _buildStatItem('누적 일수', '${analytics.totalDays}일', Colors.blue),
                 ),
                 Expanded(
-                  child: _buildStatItem('지연 완료', '${analytics.overdueCompleted}개', Colors.orange),
+                  child: _buildStatItem('평균 완료율', '${(analytics.avgCompletionRate * 100).toStringAsFixed(0)}%', Colors.green),
                 ),
                 Expanded(
-                  child: _buildStatItem('완료율', '${(analytics.completionRate * 100).toStringAsFixed(0)}%', Colors.blue),
+                  child: _buildStatItem('다음 분석', analytics.canRequestAnalysis ? '가능' : '${analytics.daysUntilNextAnalysis}일 후', 
+                      analytics.canRequestAnalysis ? Colors.green : Colors.orange),
                 ),
               ],
             ),
             
             const SizedBox(height: 16),
             
-            // 파트별 통계
-            if (analytics.partStats.isNotEmpty) ...[
-              const Text('파트별 완료 현황', style: TextStyle(fontWeight: FontWeight.w600)),
+            // 파트별 성과
+            if (analytics.partPerformance.isNotEmpty) ...[
+              const Text('파트별 평균 성과', style: TextStyle(fontWeight: FontWeight.w600)),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
                 runSpacing: 4,
-                children: analytics.partStats.entries.map((entry) {
+                children: analytics.partPerformance.entries.map((entry) {
                   return Chip(
-                    label: Text('${entry.key} ${entry.value}개'),
+                    label: Text('${entry.key} ${entry.value.toStringAsFixed(1)}/일'),
                     backgroundColor: Colors.blue.withOpacity(0.1),
                   );
                 }).toList(),
@@ -1021,6 +1195,54 @@ class _AIAdvicePageState extends State<AIAdvicePage> {
     );
   }
 
+  Widget _buildAnalysisStatusCard(UserAnalytics analytics) {
+    final statusColor = analytics.canRequestAnalysis ? Colors.green : Colors.orange;
+    final statusIcon = analytics.canRequestAnalysis ? Icons.check_circle : Icons.schedule;
+    
+    String statusText;
+    String detailText;
+    
+    if (analytics.totalDays < 7) {
+      statusText = 'AI 분석 준비 중';
+      detailText = '${7 - analytics.totalDays}일 더 사용하시면 AI 분석을 요청할 수 있어요!';
+    } else if (analytics.canRequestAnalysis) {
+      statusText = 'AI 분석 가능';
+      detailText = '지금 AI 조언을 요청할 수 있습니다.';
+    } else {
+      statusText = 'AI 분석 대기 중';
+      detailText = '마지막 분석 후 ${analytics.daysUntilNextAnalysis}일 후에 다시 요청할 수 있어요.';
+      if (analytics.lastAnalysisDate != null) {
+        final lastDate = analytics.lastAnalysisDate!;
+        detailText += ' (마지막: ${lastDate.month}/${lastDate.day})';
+      }
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: statusColor.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: statusColor.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(statusIcon, color: statusColor, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(statusText, style: TextStyle(fontWeight: FontWeight.w600, color: statusColor)),
+                Text(detailText, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildStatItem(String label, String value, Color color) {
     return Column(
       children: [
@@ -1028,6 +1250,109 @@ class _AIAdvicePageState extends State<AIAdvicePage> {
         Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
       ],
     );
+  }
+
+  Widget _buildAnalysisRequestCard(UserAnalytics analytics) {
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.auto_awesome, color: Colors.purple),
+                const SizedBox(width: 8),
+                const Text('AI 조언 요청', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const Divider(),
+            const SizedBox(height: 12),
+            
+            if (analytics.canRequestAnalysis) ...[
+              const Text('준비완료! AI가 당신의 패턴을 분석하여 개인화된 조언을 제공할 수 있어요.'),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _requestAIAdvice,
+                  icon: const Icon(Icons.psychology),
+                  label: const Text('AI 조언 받기'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.purple,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+            ] else ...[
+              Text(
+                analytics.totalDays < 7
+                    ? '${7 - analytics.totalDays}일 더 사용하시면 AI 분석을 요청할 수 있어요!'
+                    : '마지막 분석 후 ${analytics.daysUntilNextAnalysis}일 후에 다시 요청할 수 있어요.',
+                style: const TextStyle(color: Colors.grey),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: null,
+                  icon: const Icon(Icons.psychology),
+                  label: Text(analytics.totalDays < 7 ? '데이터 수집 중...' : '대기 중...'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _requestAIAdvice() async {
+    if (_analytics == null || !_analytics!.canRequestAnalysis) return;
+
+    setState(() {
+      _loading = true;
+      _error = null;
+      _advice = null;
+    });
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception('로그인이 필요합니다.');
+      }
+
+      // 현재 사용자의 로컬 할 일 목록 불러오기
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('todos');
+      List<Todo> currentTodos = [];
+      if (raw != null) {
+        final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
+        currentTodos = list.map(Todo.fromMap).toList();
+      }
+
+      // AI 조언 생성
+      final advice = await _aiService.generatePersonalizedAdvice(_analytics!, currentTodos);
+
+      setState(() {
+        _advice = advice;
+        // 분석 완료 후 analytics 새로고침
+        _loadAIAdvice();
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+      });
+    } finally {
+      setState(() {
+        _loading = false;
+      });
+    }
   }
 
   Widget _buildAdviceCard(String advice) {
