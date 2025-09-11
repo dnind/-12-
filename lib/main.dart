@@ -14,6 +14,9 @@ import 'firebase_options.dart';
 // AI
 import 'package:google_generative_ai/google_generative_ai.dart';
 
+// Config
+import 'config/api_keys.dart';
+
 // ───────────────── Entry
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -188,13 +191,12 @@ class UserAnalytics {
 
 // ─────────────── AI Service
 class AIAnalysisService {
-  static const String _apiKey = 'YOUR_GEMINI_API_KEY_HERE'; // API 키는 환경변수로 관리해야 합니다
   late final GenerativeModel _model;
 
   AIAnalysisService() {
     _model = GenerativeModel(
       model: 'gemini-1.5-flash',
-      apiKey: _apiKey,
+      apiKey: ApiKeys.geminiApiKey,
     );
   }
 
