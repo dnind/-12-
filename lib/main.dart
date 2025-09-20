@@ -28,7 +28,7 @@ class MyAppRoot extends StatelessWidget {
         '/login': (_) => const EmailLoginPage(),
         '/ai-advice': (_) => const AIAdvicePage(),
       },
-      initialRoute: '/',
+      initialRoute: '/home',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(useMaterial3: false),
     );
