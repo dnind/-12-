@@ -47,6 +47,7 @@ class _CalendarPageState extends State<CalendarPage> {
                       _selectedDay = selectedDay;
                       _focusedDay = focusedDay;
                     });
+                    Navigator.pop(context, selectedDay); // 날짜 반환
                   },
                   calendarFormat: CalendarFormat.month,
                   headerStyle: const HeaderStyle(
