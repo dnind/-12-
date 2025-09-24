@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:macha/screens/calender_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -68,11 +69,20 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     setState(() => _loading = false);
   }
 
-  Future<void> _addTodo(String title, String category, String? customCategory, DateTime? dueDate, TimeOfDay? dueTime, DueDateType dueDateType, Priority priority, NotificationInterval notificationInterval) async {
+  Future<void> _addTodo(
+    String title,
+    String category,
+    String? customCategory,
+    DateTime? dueDate,
+    TimeOfDay? dueTime,
+    DueDateType dueDateType,
+    Priority priority,
+    NotificationInterval notificationInterval,
+  ) async {
     final todo = Todo(
       id: TimeZoneUtils.kstNow.millisecondsSinceEpoch.toString(),
       title: title.trim(),
-      part: category,  // 기존 호환성
+      part: category, // 기존 호환성
       category: category,
       customCategory: customCategory,
       dueDate: dueDate,
@@ -80,9 +90,12 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       dueDateType: dueDateType,
       priority: priority,
       notificationInterval: notificationInterval,
-      nextNotificationTime: notificationInterval != NotificationInterval.none 
-        ? NotificationManager.calculateNextNotification(TimeZoneUtils.kstNow, notificationInterval)
-        : null,
+      nextNotificationTime: notificationInterval != NotificationInterval.none
+          ? NotificationManager.calculateNextNotification(
+              TimeZoneUtils.kstNow,
+              notificationInterval,
+            )
+          : null,
     );
     setState(() => todos.add(todo));
     await _persist();
@@ -92,20 +105,20 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     final wasDone = t.done;
     setState(() {
       t.done = !t.done;
-      
+
       // 진행률 업데이트
       if (t.done) {
         t.progressPercentage = 100;
       } else {
         t.progressPercentage = 0;
       }
-      
+
       // 부모 태스크 진행률 업데이트
       if (t.parentId != null) {
         ProgressManager.updateParentProgress(t.parentId!, todos);
       }
     });
-    
+
     await _persist();
 
     if (!wasDone && t.done) {
@@ -128,15 +141,15 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('완료 기록을 저장했어요.')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('완료 기록을 저장했어요.')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Firestore 저장 실패: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Firestore 저장 실패: $e')));
       }
     }
   }
@@ -167,11 +180,30 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     showDialog(
       context: context,
       builder: (_) => AddTodoDialog(
-        onSubmit: (title, category, customCategory, dueDate, dueTime, dueDateType, priority, notificationInterval) async {
-          if (title.trim().isNotEmpty) {
-            await _addTodo(title, category, customCategory, dueDate, dueTime, dueDateType, priority, notificationInterval);
-          }
-        },
+        onSubmit:
+            (
+              title,
+              category,
+              customCategory,
+              dueDate,
+              dueTime,
+              dueDateType,
+              priority,
+              notificationInterval,
+            ) async {
+              if (title.trim().isNotEmpty) {
+                await _addTodo(
+                  title,
+                  category,
+                  customCategory,
+                  dueDate,
+                  dueTime,
+                  dueDateType,
+                  priority,
+                  notificationInterval,
+                );
+              }
+            },
       ),
     );
   }
@@ -201,7 +233,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                 case 'logout':
                   await FirebaseAuth.instance.signOut();
                   if (context.mounted) {
-                    Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+                    Navigator.of(
+                      context,
+                    ).pushNamedAndRemoveUntil('/', (route) => false);
                   }
                   break;
                 case 'color':
@@ -234,10 +268,37 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           AIInsightsTab(aiService: _aiService, todos: todos),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _openAddDialog,
-        child: const Icon(Icons.add),
+      floatingActionButton: Row(
+        // 왼쪽 아래 캘린더 팝업 하는곳
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const SizedBox(width: 30), // 왼쪽 여백 확보
+          FloatingActionButton(
+            heroTag: 'calendarBtn',
+            onPressed: () {
+              showModalBottomSheet(
+                context: context,
+                isScrollControlled: true, // 화면 거의 꽉 차게
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                builder: (_) => const CalendarPage(),
+              );
+            },
+            child: const Icon(Icons.calendar_today),
+          ),
+          FloatingActionButton(
+            heroTag: 'addBtn',
+            onPressed: _openAddDialog,
+            child: const Icon(Icons.add),
+          ),
+        ],
       ),
+
+      //floatingActionButton: FloatingActionButton(
+      //onPressed: _openAddDialog,
+      //child: const Icon(Icons.add),
+      //),
     );
   }
 
@@ -301,7 +362,10 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
               ),
               const Spacer(),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.indigo.shade600,
                   borderRadius: BorderRadius.circular(12),
