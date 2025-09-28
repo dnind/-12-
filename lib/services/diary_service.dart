@@ -247,11 +247,14 @@ class DiaryService {
             orElse: () => DiaryTheme.minimal,
           );
         } else if (trimmedLine.startsWith('5. 추천 스티커:')) {
-          stickers = trimmedLine.substring(11)
-              .split(',')
-              .map((s) => s.trim())
-              .where((s) => s.isNotEmpty)
-              .toList();
+          final stickerStart = trimmedLine.indexOf(':') + 1;
+          if (stickerStart > 0 && stickerStart < trimmedLine.length) {
+            stickers = trimmedLine.substring(stickerStart)
+                .split(',')
+                .map((s) => s.trim())
+                .where((s) => s.isNotEmpty)
+                .toList();
+          }
         }
       }
 
@@ -264,11 +267,14 @@ class DiaryService {
           final trimmedLine = line.trim();
 
           if (trimmedLine.startsWith('6. 핵심 포인트:')) {
-            keyPoints = trimmedLine.substring(11)
-                .split(',')
-                .map((p) => p.trim())
-                .where((p) => p.isNotEmpty)
-                .toList();
+            final pointStart = trimmedLine.indexOf(':') + 1;
+            if (pointStart > 0 && pointStart < trimmedLine.length) {
+              keyPoints = trimmedLine.substring(pointStart)
+                  .split(',')
+                  .map((p) => p.trim())
+                  .where((p) => p.isNotEmpty)
+                  .toList();
+            }
           } else if (trimmedLine.contains('첫 번째 문제:') || trimmedLine.contains('두 번째 문제:')) {
             final questionData = trimmedLine.split(':')[1].trim();
             final parts = questionData.split('|');
@@ -305,17 +311,23 @@ class DiaryService {
           final trimmedLine = line.trim();
 
           if (trimmedLine.startsWith('6. 언급된 장소:')) {
-            places = trimmedLine.substring(11)
-                .split(',')
-                .map((p) => p.trim())
-                .where((p) => p.isNotEmpty)
-                .toList();
+            final placeStart = trimmedLine.indexOf(':') + 1;
+            if (placeStart > 0 && placeStart < trimmedLine.length) {
+              places = trimmedLine.substring(placeStart)
+                  .split(',')
+                  .map((p) => p.trim())
+                  .where((p) => p.isNotEmpty)
+                  .toList();
+            }
           } else if (trimmedLine.startsWith('7. 추천 장소:')) {
-            recommendations = trimmedLine.substring(10)
-                .split(',')
-                .map((r) => r.trim())
-                .where((r) => r.isNotEmpty)
-                .toList();
+            final recStart = trimmedLine.indexOf(':') + 1;
+            if (recStart > 0 && recStart < trimmedLine.length) {
+              recommendations = trimmedLine.substring(recStart)
+                  .split(',')
+                  .map((r) => r.trim())
+                  .where((r) => r.isNotEmpty)
+                  .toList();
+            }
           }
         }
 
@@ -332,13 +344,19 @@ class DiaryService {
           final trimmedLine = line.trim();
 
           if (trimmedLine.startsWith('6. 감정 분석:')) {
-            emotion = trimmedLine.substring(10).trim();
+            final emotionStart = trimmedLine.indexOf(':') + 1;
+            if (emotionStart > 0 && emotionStart < trimmedLine.length) {
+              emotion = trimmedLine.substring(emotionStart).trim();
+            }
           } else if (trimmedLine.startsWith('7. 내일을 위한 팁:')) {
-            tomorrowTips = trimmedLine.substring(14)
-                .split(',')
-                .map((tip) => tip.trim())
-                .where((tip) => tip.isNotEmpty)
-                .toList();
+            final tipStart = trimmedLine.indexOf(':') + 1;
+            if (tipStart > 0 && tipStart < trimmedLine.length) {
+              tomorrowTips = trimmedLine.substring(tipStart)
+                  .split(',')
+                  .map((tip) => tip.trim())
+                  .where((tip) => tip.isNotEmpty)
+                  .toList();
+            }
           }
         }
 
