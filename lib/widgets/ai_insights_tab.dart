@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/todo_model.dart';
 import '../models/analysis_models.dart';
@@ -33,11 +32,9 @@ class _AIInsightsTabState extends State<AIInsightsTab> {
     });
 
     try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        final analytics = await widget.aiService.analyzeUserData(user.uid);
-        setState(() => _analytics = analytics);
-      }
+      // 로컬 모드에서는 임시 사용자 ID 사용
+      final analytics = await widget.aiService.analyzeUserData('local_user');
+      setState(() => _analytics = analytics);
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
 import '../services/admin_service.dart';
 import '../services/ai_analysis_service.dart';
@@ -115,7 +114,7 @@ class _AdminDashboardState extends State<AdminDashboard>
             onSelected: (value) async {
               switch (value) {
                 case 'logout':
-                  await FirebaseAuth.instance.signOut();
+                  // 로컬 모드에서는 로그아웃 불필요
                   if (context.mounted) {
                     Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
                   }
@@ -691,7 +690,7 @@ class _AdminDashboardState extends State<AdminDashboard>
                   ),
                   const SizedBox(height: 12),
                   _buildSettingRow('관리자 이메일', AdminService.adminEmail),
-                  _buildSettingRow('현재 사용자', FirebaseAuth.instance.currentUser?.email ?? 'Unknown'),
+                  _buildSettingRow('현재 사용자', 'local_user'),
                   _buildSettingRow('권한 상태', AdminService.isAdmin() ? '관리자' : '일반 사용자'),
                 ],
               ),
@@ -937,9 +936,9 @@ class _AdminDashboardState extends State<AdminDashboard>
     
     try {
       final aiService = AIAnalysisService();
-      final user = FirebaseAuth.instance.currentUser;
+      const user = 'local_user';
       if (user != null) {
-        final analytics = await aiService.analyzeUserData(user.uid);
+        final analytics = await aiService.analyzeUserData(user);
         final advice = await aiService.generatePersonalizedAdvice(analytics, []);
         
         if (context.mounted) {

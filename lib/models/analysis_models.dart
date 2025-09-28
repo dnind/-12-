@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:convert';
 import 'todo_model.dart';
 import 'diary_models.dart';
 
@@ -17,22 +17,41 @@ class DailyProgress {
     required this.recordedAt,
   });
 
-  factory DailyProgress.fromFirestore(Map<String, dynamic> data) {
+  factory DailyProgress.fromJson(String jsonString) {
+    final data = jsonDecode(jsonString);
     return DailyProgress(
       date: data['date'] as String,
       totalTodos: data['totalTodos'] as int,
       completedTodos: data['completedTodos'] as int,
       partProgress: Map<String, int>.from(data['partProgress'] ?? {}),
-      recordedAt: (data['recordedAt'] as Timestamp).toDate(),
+      recordedAt: DateTime.parse(data['recordedAt']),
     );
   }
 
-  Map<String, dynamic> toFirestore() => {
+  factory DailyProgress.fromMap(Map<String, dynamic> data) {
+    return DailyProgress(
+      date: data['date'] as String,
+      totalTodos: data['totalTodos'] as int,
+      completedTodos: data['completedTodos'] as int,
+      partProgress: Map<String, int>.from(data['partProgress'] ?? {}),
+      recordedAt: DateTime.parse(data['recordedAt']),
+    );
+  }
+
+  String toJson() => jsonEncode({
     'date': date,
     'totalTodos': totalTodos,
     'completedTodos': completedTodos,
     'partProgress': partProgress,
-    'recordedAt': FieldValue.serverTimestamp(),
+    'recordedAt': recordedAt.toIso8601String(),
+  });
+
+  Map<String, dynamic> toMap() => {
+    'date': date,
+    'totalTodos': totalTodos,
+    'completedTodos': completedTodos,
+    'partProgress': partProgress,
+    'recordedAt': recordedAt.toIso8601String(),
   };
 
   double get completionRate => totalTodos > 0 ? completedTodos / totalTodos : 0.0;
@@ -83,13 +102,13 @@ class CompletedTask {
     required this.wasDueSoon,
   });
 
-  factory CompletedTask.fromFirestore(Map<String, dynamic> data) {
-    final completedAt = data['completedAtKST'] != null 
-        ? (data['completedAtKST'] as Timestamp).toDate()
-        : (data['completedAt'] as Timestamp).toDate();
-    
-    final dueDate = data['dueDate'] != null 
-        ? (data['dueDate'] as Timestamp).toDate() 
+  factory CompletedTask.fromJson(Map<String, dynamic> data) {
+    final completedAt = data['completedAtKST'] != null
+        ? DateTime.parse(data['completedAtKST'])
+        : DateTime.parse(data['completedAt']);
+
+    final dueDate = data['dueDate'] != null
+        ? DateTime.parse(data['dueDate'])
         : null;
     
     return CompletedTask(

@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 
 enum DiaryCategory {
   study('공부'),
@@ -61,35 +60,35 @@ class DiaryEntry {
     required this.updatedAt,
   });
 
-  factory DiaryEntry.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
+  factory DiaryEntry.fromJson(Map<String, dynamic> json) {
     return DiaryEntry(
-      id: doc.id,
-      userId: data['userId'] ?? '',
-      title: data['title'] ?? '',
-      content: data['content'] ?? '',
-      date: (data['date'] as Timestamp).toDate(),
-      category: DiaryCategory.fromString(data['category'] ?? 'daily'),
-      theme: data['theme'] != null ? DiaryTheme.values.firstWhere(
-        (t) => t.name == data['theme'],
+      id: json['id'] ?? '',
+      userId: json['userId'] ?? '',
+      title: json['title'] ?? '',
+      content: json['content'] ?? '',
+      date: DateTime.parse(json['date']),
+      category: DiaryCategory.fromString(json['category'] ?? 'daily'),
+      theme: json['theme'] != null ? DiaryTheme.values.firstWhere(
+        (t) => t.name == json['theme'],
         orElse: () => DiaryTheme.minimal,
       ) : null,
-      stickers: List<String>.from(data['stickers'] ?? []),
-      aiAnalysis: data['aiAnalysis'],
-      decoration: data['decoration'],
-      location: data['location'],
-      tags: List<String>.from(data['tags'] ?? []),
-      createdAt: (data['createdAt'] as Timestamp).toDate(),
-      updatedAt: (data['updatedAt'] as Timestamp).toDate(),
+      stickers: List<String>.from(json['stickers'] ?? []),
+      aiAnalysis: json['aiAnalysis'],
+      decoration: json['decoration'],
+      location: json['location'],
+      tags: List<String>.from(json['tags'] ?? []),
+      createdAt: DateTime.parse(json['createdAt']),
+      updatedAt: DateTime.parse(json['updatedAt']),
     );
   }
 
-  Map<String, dynamic> toFirestore() {
+  Map<String, dynamic> toJson() {
     return {
+      'id': id,
       'userId': userId,
       'title': title,
       'content': content,
-      'date': Timestamp.fromDate(date),
+      'date': date.toIso8601String(),
       'category': category.name,
       'theme': theme?.name,
       'stickers': stickers,
@@ -97,8 +96,8 @@ class DiaryEntry {
       'decoration': decoration,
       'location': location,
       'tags': tags,
-      'createdAt': Timestamp.fromDate(createdAt),
-      'updatedAt': Timestamp.fromDate(updatedAt),
+      'createdAt': createdAt.toIso8601String(),
+      'updatedAt': updatedAt.toIso8601String(),
     };
   }
 

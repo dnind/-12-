@@ -1,5 +1,5 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import '../models/diary_models.dart';
 import '../config/api_keys.dart';
@@ -9,9 +9,13 @@ class DiaryService {
   factory DiaryService() => _instance;
   DiaryService._internal();
 
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseAuth _auth = FirebaseAuth.instance;
   GenerativeModel? _model;
+  SharedPreferences? _prefs;
+
+  Future<SharedPreferences> get prefs async {
+    _prefs ??= await SharedPreferences.getInstance();
+    return _prefs!;
+  }
 
   GenerativeModel get model {
     _model ??= GenerativeModel(
@@ -31,26 +35,23 @@ class DiaryService {
     _model = null;
   }
 
-  Stream<List<DiaryEntry>> getUserDiaries() {
-    final user = _auth.currentUser;
-    if (user == null) return Stream.value([]);
+  Future<List<DiaryEntry>> getUserDiaries() async {
+    final preferences = await prefs;
+    final diariesJson = preferences.getStringList('diaries') ?? [];
 
-    return _firestore
-        .collection('diaries')
-        .where('userId', isEqualTo: user.uid)
-        .snapshots()
-        .map((snapshot) {
-          final diaries = snapshot.docs.map((doc) => DiaryEntry.fromFirestore(doc)).toList();
-          diaries.sort((a, b) => b.date.compareTo(a.date)); // 클라이언트 측에서 정렬
-          return diaries;
-        });
+    final diaries = diariesJson.map((json) {
+      final data = jsonDecode(json) as Map<String, dynamic>;
+      return DiaryEntry.fromJson(data);
+    }).toList();
+
+    diaries.sort((a, b) => b.date.compareTo(a.date));
+    return diaries;
   }
 
   Future<DiaryEntry?> getDiary(String id) async {
     try {
-      final doc = await _firestore.collection('diaries').doc(id).get();
-      if (!doc.exists) return null;
-      return DiaryEntry.fromFirestore(doc);
+      final diaries = await getUserDiaries();
+      return diaries.where((diary) => diary.id == id).firstOrNull;
     } catch (e) {
       print('Error getting diary: $e');
       return null;
@@ -59,18 +60,22 @@ class DiaryService {
 
   Future<String> createDiary(DiaryEntry diary) async {
     try {
-      final user = _auth.currentUser;
-      if (user == null) throw Exception('User not authenticated');
+      final preferences = await prefs;
+      final diaries = await getUserDiaries();
 
-      final docRef = await _firestore.collection('diaries').add(
-        diary.copyWith(
-          userId: user.uid,
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
-        ).toFirestore(),
+      final newId = DateTime.now().millisecondsSinceEpoch.toString();
+      final newDiary = diary.copyWith(
+        id: newId,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
       );
 
-      return docRef.id;
+      diaries.add(newDiary);
+
+      final diariesJson = diaries.map((d) => jsonEncode(d.toJson())).toList();
+      await preferences.setStringList('diaries', diariesJson);
+
+      return newId;
     } catch (e) {
       print('Error creating diary: $e');
       throw e;
@@ -79,9 +84,15 @@ class DiaryService {
 
   Future<void> updateDiary(DiaryEntry diary) async {
     try {
-      await _firestore.collection('diaries').doc(diary.id).update(
-        diary.copyWith(updatedAt: DateTime.now()).toFirestore(),
-      );
+      final preferences = await prefs;
+      final diaries = await getUserDiaries();
+
+      final index = diaries.indexWhere((d) => d.id == diary.id);
+      if (index != -1) {
+        diaries[index] = diary.copyWith(updatedAt: DateTime.now());
+        final diariesJson = diaries.map((d) => jsonEncode(d.toJson())).toList();
+        await preferences.setStringList('diaries', diariesJson);
+      }
     } catch (e) {
       print('Error updating diary: $e');
       throw e;
@@ -90,7 +101,12 @@ class DiaryService {
 
   Future<void> deleteDiary(String id) async {
     try {
-      await _firestore.collection('diaries').doc(id).delete();
+      final preferences = await prefs;
+      final diaries = await getUserDiaries();
+
+      diaries.removeWhere((d) => d.id == id);
+      final diariesJson = diaries.map((d) => jsonEncode(d.toJson())).toList();
+      await preferences.setStringList('diaries', diariesJson);
     } catch (e) {
       print('Error deleting diary: $e');
       throw e;
@@ -452,59 +468,35 @@ class DiaryService {
     }
   }
 
-  Stream<List<DiaryEntry>> searchDiaries(String query) {
-    final user = _auth.currentUser;
-    if (user == null) return Stream.value([]);
+  Future<List<DiaryEntry>> searchDiaries(String query) async {
+    final diaries = await getUserDiaries();
 
-    return _firestore
-        .collection('diaries')
-        .where('userId', isEqualTo: user.uid)
-        .orderBy('date', descending: true)
-        .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => DiaryEntry.fromFirestore(doc))
-            .where((diary) =>
-                diary.title.toLowerCase().contains(query.toLowerCase()) ||
-                diary.content.toLowerCase().contains(query.toLowerCase()) ||
-                diary.tags.any((tag) => tag.toLowerCase().contains(query.toLowerCase())))
-            .toList());
+    return diaries.where((diary) =>
+        diary.title.toLowerCase().contains(query.toLowerCase()) ||
+        diary.content.toLowerCase().contains(query.toLowerCase()) ||
+        diary.tags.any((tag) => tag.toLowerCase().contains(query.toLowerCase())))
+        .toList();
   }
 
-  Stream<List<DiaryEntry>> getDiariesByCategory(DiaryCategory category) {
-    final user = _auth.currentUser;
-    if (user == null) return Stream.value([]);
+  Future<List<DiaryEntry>> getDiariesByCategory(DiaryCategory category) async {
+    final diaries = await getUserDiaries();
 
-    return _firestore
-        .collection('diaries')
-        .where('userId', isEqualTo: user.uid)
-        .snapshots()
-        .map((snapshot) {
-          final diaries = snapshot.docs
-              .map((doc) => DiaryEntry.fromFirestore(doc))
-              .where((diary) => diary.category == category)
-              .toList();
-          diaries.sort((a, b) => b.date.compareTo(a.date));
-          return diaries;
-        });
+    final filteredDiaries = diaries
+        .where((diary) => diary.category == category)
+        .toList();
+    filteredDiaries.sort((a, b) => b.date.compareTo(a.date));
+    return filteredDiaries;
   }
 
-  Stream<List<DiaryEntry>> getDiariesByDateRange(DateTime start, DateTime end) {
-    final user = _auth.currentUser;
-    if (user == null) return Stream.value([]);
+  Future<List<DiaryEntry>> getDiariesByDateRange(DateTime start, DateTime end) async {
+    final diaries = await getUserDiaries();
 
-    return _firestore
-        .collection('diaries')
-        .where('userId', isEqualTo: user.uid)
-        .snapshots()
-        .map((snapshot) {
-          final diaries = snapshot.docs
-              .map((doc) => DiaryEntry.fromFirestore(doc))
-              .where((diary) =>
-                diary.date.isAfter(start.subtract(const Duration(days: 1))) &&
-                diary.date.isBefore(end.add(const Duration(days: 1))))
-              .toList();
-          diaries.sort((a, b) => b.date.compareTo(a.date));
-          return diaries;
-        });
+    final filteredDiaries = diaries
+        .where((diary) =>
+          diary.date.isAfter(start.subtract(const Duration(days: 1))) &&
+          diary.date.isBefore(end.add(const Duration(days: 1))))
+        .toList();
+    filteredDiaries.sort((a, b) => b.date.compareTo(a.date));
+    return filteredDiaries;
   }
 }

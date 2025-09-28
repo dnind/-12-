@@ -34,7 +34,7 @@ class _QuizBankPageState extends State<QuizBankPage> {
       print('=== 문제은행 로딩 시작 ===');
 
       // 모든 다이어리를 가져와서 공부 카테고리만 필터링
-      final allDiaries = await _diaryService.getUserDiaries().first;
+      final allDiaries = await _diaryService.getUserDiaries();
       print('전체 다이어리 개수: ${allDiaries.length}');
 
       final studyDiaries = allDiaries.where((diary) => diary.category == DiaryCategory.study).toList();
@@ -62,17 +62,18 @@ class _QuizBankPageState extends State<QuizBankPage> {
 
               print('퀴즈 문제 개수: ${studyAnalysis.quizQuestions.length}');
 
-            // 각 퀴즈에 출처 다이어리 정보 추가
-            for (final quiz in studyAnalysis.quizQuestions) {
-              allQuizzes.add(QuizQuestion(
-                question: '[${diary.title}] ${quiz.question}',
-                options: quiz.options,
-                correctAnswerIndex: quiz.correctAnswerIndex,
-                explanation: quiz.explanation,
-              ));
+              // 각 퀴즈에 출처 다이어리 정보 추가
+              for (final quiz in studyAnalysis.quizQuestions) {
+                allQuizzes.add(QuizQuestion(
+                  question: '[${diary.title}] ${quiz.question}',
+                  options: quiz.options,
+                  correctAnswerIndex: quiz.correctAnswerIndex,
+                  explanation: quiz.explanation,
+                ));
+              }
+            } catch (e) {
+              print('StudyAnalysis 파싱 오류: $e');
             }
-          } catch (e) {
-            print('StudyAnalysis 파싱 오류: $e');
           }
         }
       }

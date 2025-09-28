@@ -1,5 +1,5 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 
 import '../config/api_keys.dart';
@@ -26,15 +26,15 @@ class AIAnalysisService {
     _model = null;
   }
 
-  // 하루 종료 시 일일 진행률을 Firestore에 저장
+  // 하루 종료 시 일일 진행률을 로컬 저장소에 저장
   Future<void> saveDailyProgress(String userId, List<Todo> todos) async {
     try {
       final now = TimeZoneUtils.kstNow;
       final dateKey = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-      
+
       final totalTodos = todos.length;
       final completedTodos = todos.where((t) => t.done).length;
-      
+
       // 파트별 진행률 계산
       final partProgress = <String, int>{};
       for (final todo in todos.where((t) => t.done)) {
@@ -49,11 +49,10 @@ class AIAnalysisService {
         recordedAt: now,
       );
 
-      // Firestore에 저장 (같은 날짜면 덮어쓰기)
-      await FirebaseFirestore.instance
-          .collection('daily_progress')
-          .doc('${userId}_$dateKey')
-          .set(dailyProgress.toFirestore());
+      // SharedPreferences에 저장
+      final prefs = await SharedPreferences.getInstance();
+      final progressKey = 'daily_progress_${userId}_$dateKey';
+      await prefs.setString(progressKey, dailyProgress.toJson());
     } catch (e) {
       print('일일 진행률 저장 실패: $e');
     }
@@ -61,28 +60,28 @@ class AIAnalysisService {
 
   Future<UserAnalytics> analyzeUserData(String userId) async {
     try {
-      // 일일 진행률 데이터 조회 (userId로 필터링하기 위해 문서 ID 패턴 사용)
-      final progressSnapshot = await FirebaseFirestore.instance
-          .collection('daily_progress')
-          .orderBy('recordedAt', descending: true)
-          .get();
+      // 로컬 저장소에서 일일 진행률 데이터 조회
+      final prefs = await SharedPreferences.getInstance();
+      final keys = prefs.getKeys().where((key) => key.startsWith('daily_progress_${userId}_')).toList();
 
-      // 클라이언트 측에서 userId 필터링
-      final userDocs = progressSnapshot.docs.where((doc) => doc.id.startsWith('${userId}_')).toList();
+      final dailyData = <DailyProgress>[];
+      for (final key in keys) {
+        final jsonString = prefs.getString(key);
+        if (jsonString != null) {
+          dailyData.add(DailyProgress.fromJson(jsonString));
+        }
+      }
 
-      final dailyData = userDocs
-          .map((doc) => DailyProgress.fromFirestore(doc.data()))
-          .toList();
+      // 날짜순으로 정렬 (최신 순)
+      dailyData.sort((a, b) => b.recordedAt.compareTo(a.recordedAt));
 
       // 마지막 AI 분석 시점 조회
-      final lastAnalysisDoc = await FirebaseFirestore.instance
-          .collection('ai_analysis_history')
-          .doc(userId)
-          .get();
+      final lastAnalysisKey = 'ai_analysis_history_$userId';
+      final lastAnalysisString = prefs.getString(lastAnalysisKey);
 
       DateTime? lastAnalysisDate;
-      if (lastAnalysisDoc.exists) {
-        lastAnalysisDate = (lastAnalysisDoc.data()!['lastAnalysisDate'] as Timestamp).toDate();
+      if (lastAnalysisString != null) {
+        lastAnalysisDate = DateTime.parse(lastAnalysisString);
       }
 
       // 분석 가능 여부 판단
@@ -132,7 +131,7 @@ class AIAnalysisService {
 
   bool _canRequestAnalysis(List<DailyProgress> dailyData, DateTime? lastAnalysisDate, String userId) {
     // 관리자 계정은 항상 분석 가능
-    if (userId == 'super@root.com' || FirebaseAuth.instance.currentUser?.email == 'super@root.com') {
+    if (userId == 'super@root.com' || userId == 'local_user') {
       return true;
     }
 
@@ -149,7 +148,7 @@ class AIAnalysisService {
 
   int _calculateDaysUntilNext(List<DailyProgress> dailyData, DateTime? lastAnalysisDate, String userId) {
     // 관리자 계정은 항상 0일 (즉시 가능)
-    if (userId == 'super@root.com' || FirebaseAuth.instance.currentUser?.email == 'super@root.com') {
+    if (userId == 'super@root.com' || userId == 'local_user') {
       return 0;
     }
 
@@ -167,16 +166,18 @@ class AIAnalysisService {
   Future<WeeklyAnalysis> _generateWeeklyAnalysis(String userId, List<DailyProgress> dailyData) async {
     final now = TimeZoneUtils.kstNow;
     final weekStart = now.subtract(const Duration(days: 7));
-    
-    // 지난 7일간의 완료된 태스크 데이터 조회
-    final completedTasksSnapshot = await FirebaseFirestore.instance
-        .collection('completed_tasks')
-        .where('userId', isEqualTo: userId)
-        .where('completedAt', isGreaterThanOrEqualTo: Timestamp.fromDate(weekStart))
-        .get();
 
-    final completedTasks = completedTasksSnapshot.docs
-        .map((doc) => CompletedTask.fromFirestore(doc.data()))
+    // 지난 7일간의 완료된 태스크 데이터 조회 (로컬 저장소)
+    final prefs = await SharedPreferences.getInstance();
+    final completedTasksString = prefs.getString('completed_tasks') ?? '[]';
+    final List<dynamic> completedTasksList = jsonDecode(completedTasksString);
+
+    final completedTasks = completedTasksList
+        .where((taskData) {
+          final completedAt = DateTime.parse(taskData['completedAt']);
+          return taskData['userId'] == userId && completedAt.isAfter(weekStart);
+        })
+        .map((taskData) => CompletedTask.fromJson(taskData))
         .toList();
 
     // 통계 계산
@@ -343,23 +344,20 @@ class AIAnalysisService {
 
   Future<String> generatePersonalizedAdvice(UserAnalytics analytics, List<Todo> currentTodos) async {
     try {
-      // 관리자 계정이 아닌 경우에만 제한 확인
-      final isAdmin = FirebaseAuth.instance.currentUser?.email == 'super@root.com';
-      if (!isAdmin && !analytics.canRequestAnalysis) {
+      // 로컬 모드에서는 항상 분석 가능
+      final userId = 'local_user';
+      if (!analytics.canRequestAnalysis) {
         throw Exception('아직 AI 분석을 요청할 수 없습니다. ${analytics.daysUntilNextAnalysis}일 후에 다시 시도해주세요.');
       }
 
       final prompt = _buildAnalysisPrompt(analytics, currentTodos);
-      
+
       final content = [Content.text(prompt)];
       final response = await model.generateContent(content);
-      
+
       // 분석 완료 후 기록 저장
-      final user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        await _saveAnalysisHistory(user.uid);
-      }
-      
+      await _saveAnalysisHistory(userId);
+
       return response.text ?? '조언을 생성할 수 없습니다.';
     } catch (e) {
       throw Exception('AI 조언 생성 실패: $e');
@@ -368,13 +366,16 @@ class AIAnalysisService {
 
   Future<void> _saveAnalysisHistory(String userId) async {
     try {
-      await FirebaseFirestore.instance
-          .collection('ai_analysis_history')
-          .doc(userId)
-          .set({
-        'lastAnalysisDate': FieldValue.serverTimestamp(),
-        'analysisCount': FieldValue.increment(1),
-      }, SetOptions(merge: true));
+      final prefs = await SharedPreferences.getInstance();
+      final historyKey = 'ai_analysis_history_$userId';
+      final countKey = 'ai_analysis_count_$userId';
+
+      // 마지막 분석 날짜 저장
+      await prefs.setString(historyKey, DateTime.now().toIso8601String());
+
+      // 분석 횟수 증가
+      final currentCount = prefs.getInt(countKey) ?? 0;
+      await prefs.setInt(countKey, currentCount + 1);
     } catch (e) {
       print('분석 기록 저장 실패: $e');
     }

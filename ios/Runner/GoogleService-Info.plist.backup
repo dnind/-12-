@@ -3,32 +3,32 @@
 <plist version="1.0">
 <dict>
 	<key>CLIENT_ID</key>
-	<string>836484974953-your-ios-client-id.apps.googleusercontent.com</string>
+	<string>836484974953-bda5f47505fb8fd54915f8.apps.googleusercontent.com</string>
 	<key>REVERSED_CLIENT_ID</key>
-	<string>com.googleusercontent.apps.836484974953-your-ios-client-id</string>
+	<string>com.googleusercontent.apps.836484974953-bda5f47505fb8fd54915f8</string>
 	<key>API_KEY</key>
-	<string>AIzaSyDdgIaz6Kjr7xH6Lvp2CZW0e9eX6eIbTBE</string>
+	<string>AIzaSyDMmC-9HzbQa_SDE_yINrNglm9Kb1cuHA0</string>
 	<key>GCM_SENDER_ID</key>
 	<string>836484974953</string>
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>com.example.instagram</string>
+	<string>com.example.macha</string>
 	<key>PROJECT_ID</key>
 	<string>fluttergram-805cc</string>
 	<key>STORAGE_BUCKET</key>
 	<string>fluttergram-805cc.firebasestorage.app</string>
 	<key>IS_ADS_ENABLED</key>
-	<false></false>
+	<false/>
 	<key>IS_ANALYTICS_ENABLED</key>
-	<false></false>
+	<false/>
 	<key>IS_APPINVITE_ENABLED</key>
-	<true></true>
+	<true/>
 	<key>IS_GCM_ENABLED</key>
-	<true></true>
+	<true/>
 	<key>IS_SIGNIN_ENABLED</key>
-	<true></true>
+	<true/>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:836484974953:ios:your-ios-app-id4915f8</string>
+	<string>1:836484974953:ios:bda5f47505fb8fd54915f8</string>
 </dict>
 </plist>

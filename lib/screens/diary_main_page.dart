@@ -143,40 +143,43 @@ class _DiaryMainPageState extends State<DiaryMainPage> {
   }
 
   Widget _buildDiaryList() {
-    Stream<List<DiaryEntry>> stream;
-
-    if (_searchQuery.isNotEmpty) {
-      stream = _diaryService.searchDiaries(_searchQuery);
-    } else if (_selectedCategory != null) {
-      stream = _diaryService.getDiariesByCategory(_selectedCategory!);
-    } else {
-      stream = _diaryService.getUserDiaries();
-    }
-
-    return StreamBuilder<List<DiaryEntry>>(
-      stream: stream,
+    return FutureBuilder<List<DiaryEntry>>(
+      future: _loadDiaries(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
-
         if (snapshot.hasError) {
-          return Center(child: Text('오류가 발생했습니다: ${snapshot.error}'));
+          return Center(child: Text('오류: ${snapshot.error}'));
         }
-
-        final diaries = snapshot.data ?? [];
-
-        if (diaries.isEmpty) {
-          return _buildEmptyState();
+        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+          return const Center(child: Text('다이어리가 없습니다.'));
         }
+        return _buildDiaryGrid(snapshot.data!);
+      },
+    );
+  }
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: diaries.length,
-          itemBuilder: (context, index) {
-            return _buildDiaryCard(diaries[index]);
-          },
-        );
+  Future<List<DiaryEntry>> _loadDiaries() async {
+    if (_searchQuery.isNotEmpty) {
+      return await _diaryService.searchDiaries(_searchQuery);
+    } else if (_selectedCategory != null) {
+      return await _diaryService.getDiariesByCategory(_selectedCategory!);
+    } else {
+      return await _diaryService.getUserDiaries();
+    }
+  }
+
+  Widget _buildDiaryGrid(List<DiaryEntry> diaries) {
+    if (diaries.isEmpty) {
+      return _buildEmptyState();
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: diaries.length,
+      itemBuilder: (context, index) {
+        return _buildDiaryCard(diaries[index]);
       },
     );
   }

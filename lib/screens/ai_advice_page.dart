@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/todo_model.dart';
@@ -35,10 +34,8 @@ class _AIAdvicePageState extends State<AIAdvicePage> {
     });
 
     try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) {
-        throw Exception('로그인이 필요합니다.');
-      }
+      // 로컬 모드에서는 임시 사용자 사용
+      const user = 'local_user';
 
       // 현재 사용자의 로컬 할 일 목록 불러오기
       final prefs = await SharedPreferences.getInstance();
@@ -50,7 +47,7 @@ class _AIAdvicePageState extends State<AIAdvicePage> {
       }
 
       // 사용자 데이터 분석
-      final analytics = await _aiService.analyzeUserData(user.uid);
+      final analytics = await _aiService.analyzeUserData(user);
       
       // AI 조언 생성
       final advice = await _aiService.generatePersonalizedAdvice(analytics, currentTodos);
