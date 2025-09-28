@@ -16,7 +16,7 @@ class AIAnalysisService {
 
   GenerativeModel get model {
     _model ??= GenerativeModel(
-      model: 'gemini-pro',
+      model: 'gemini-2.0-flash-exp',
       apiKey: ApiKeys.geminiApiKey,
     );
     return _model!;
