@@ -15,7 +15,7 @@ class DiaryService {
 
   GenerativeModel get model {
     _model ??= GenerativeModel(
-      model: 'gemini-1.5-pro',
+      model: 'gemini-pro',
       apiKey: ApiKeys.geminiApiKey,
       generationConfig: GenerationConfig(
         temperature: 0.7,
