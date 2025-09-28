@@ -141,18 +141,30 @@ class _AIInsightsTabState extends State<AIInsightsTab> {
   }
 
   Widget _buildStatusItem(String label, int count, Color color) {
-    return Column(
-      children: [
-        Text(
-          count.toString(),
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: color,
-          ),
+    return GestureDetector(
+      onTap: () => _showTaskListDialog(label, color),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withOpacity(0.3)),
         ),
-        Text(label, style: TextStyle(color: Colors.grey[600])),
-      ],
+        child: Column(
+          children: [
+            Text(
+              count.toString(),
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+            Text(label, style: TextStyle(color: Colors.grey[600])),
+            const SizedBox(height: 4),
+            Icon(Icons.touch_app, size: 12, color: Colors.grey[500]),
+          ],
+        ),
+      ),
     );
   }
 
@@ -296,6 +308,216 @@ class _AIInsightsTabState extends State<AIInsightsTab> {
           SnackBar(content: Text('AI 조언 요청 실패: $e')),
         );
       }
+    }
+  }
+
+  void _showTaskListDialog(String label, Color color) {
+    List<Todo> filteredTodos;
+    String dialogTitle;
+    IconData dialogIcon;
+
+    switch (label) {
+      case '활성':
+        filteredTodos = widget.todos.where((t) => !t.done).toList();
+        dialogTitle = '활성 할 일';
+        dialogIcon = Icons.schedule;
+        break;
+      case '완료':
+        filteredTodos = widget.todos.where((t) => t.done).toList();
+        dialogTitle = '완료된 할 일';
+        dialogIcon = Icons.check_circle;
+        break;
+      case '초과':
+        filteredTodos = widget.todos.where((t) => t.isOverdue && !t.done).toList();
+        dialogTitle = '기한 초과된 할 일';
+        dialogIcon = Icons.warning;
+        break;
+      default:
+        return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(dialogIcon, color: color, size: 24),
+            const SizedBox(width: 8),
+            Text(dialogTitle),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 400,
+          child: filteredTodos.isEmpty
+            ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.inbox_outlined, size: 64, color: Colors.grey[400]),
+                    const SizedBox(height: 16),
+                    Text(
+                      '해당하는 할 일이 없습니다',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            : ListView.builder(
+                itemCount: filteredTodos.length,
+                itemBuilder: (context, index) {
+                  final todo = filteredTodos[index];
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: _getCategoryColor(todo.displayCategory),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  todo.displayCategory,
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: _getPriorityColor(todo.priority),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  todo.priority.displayName,
+                                  style: const TextStyle(
+                                    fontSize: 9,
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            todo.title,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (todo.dueDate != null) ...[
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.schedule,
+                                  size: 12,
+                                  color: todo.isOverdue ? Colors.red : Colors.grey[600],
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '${todo.dueDate!.month}/${todo.dueDate!.day}${todo.dueTime != null ? ' ${todo.dueTime!.format(context)}' : ''}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: todo.isOverdue ? Colors.red : Colors.grey[600],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                          if (todo.progressPercentage > 0 && todo.progressPercentage < 100) ...[
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: LinearProgressIndicator(
+                                    value: todo.progressPercentage / 100,
+                                    backgroundColor: Colors.grey[300],
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      _getPriorityColor(todo.priority),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '${todo.progressPercentage}%',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('닫기'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _getCategoryColor(String category) {
+    switch (category) {
+      case '학업':
+        return Colors.blue;
+      case '업무':
+        return Colors.green;
+      case '개인':
+        return Colors.orange;
+      case '건강':
+        return Colors.red;
+      case '취미':
+        return Colors.purple;
+      case '사회':
+        return Colors.teal;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  Color _getPriorityColor(Priority priority) {
+    switch (priority) {
+      case Priority.urgent:
+        return Colors.red[700]!;
+      case Priority.high:
+        return Colors.orange;
+      case Priority.medium:
+        return Colors.blue;
+      case Priority.low:
+        return Colors.grey;
     }
   }
 }

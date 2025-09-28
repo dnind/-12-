@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'todo_model.dart';
+import 'diary_models.dart';
 
 class DailyProgress {
   final String date; // YYYY-MM-DD 형식
@@ -38,33 +39,95 @@ class DailyProgress {
 }
 
 class CompletedTask {
+  final String todoId;
   final String title;
-  final String part;
+  final String category;
+  final String? customCategory;
+  final String part; // 기존 호환성
+  final int priority;
+  final String priorityName;
+  final int progressPercentage;
+  final bool isSubtask;
+  final String? parentId;
+  final int subtaskCount;
   final DateTime completedAt;
   final DateTime? dueDate;
+  final Map<String, int>? dueTime;
+  final int dueDateType;
+  final String dueDateTypeName;
+  final int notificationInterval;
+  final String notificationIntervalName;
   final bool wasOverdue;
+  final bool wasDueSoon;
 
   CompletedTask({
+    required this.todoId,
     required this.title,
+    required this.category,
+    this.customCategory,
     required this.part,
+    required this.priority,
+    required this.priorityName,
+    required this.progressPercentage,
+    required this.isSubtask,
+    this.parentId,
+    required this.subtaskCount,
     required this.completedAt,
     this.dueDate,
+    this.dueTime,
+    required this.dueDateType,
+    required this.dueDateTypeName,
+    required this.notificationInterval,
+    required this.notificationIntervalName,
     required this.wasOverdue,
+    required this.wasDueSoon,
   });
 
   factory CompletedTask.fromFirestore(Map<String, dynamic> data) {
-    final completedAt = (data['completedAt'] as Timestamp).toDate();
+    final completedAt = data['completedAtKST'] != null 
+        ? (data['completedAtKST'] as Timestamp).toDate()
+        : (data['completedAt'] as Timestamp).toDate();
+    
     final dueDate = data['dueDate'] != null 
         ? (data['dueDate'] as Timestamp).toDate() 
         : null;
     
     return CompletedTask(
-      title: data['title'] as String,
-      part: data['part'] as String,
+      todoId: data['todoId'] as String? ?? '',
+      title: data['title'] as String? ?? 'Unknown',
+      category: data['category'] as String? ?? data['part'] as String? ?? 'Unknown',
+      customCategory: data['customCategory'] as String?,
+      part: data['part'] as String? ?? 'Unknown',
+      priority: data['priority'] as int? ?? 1,
+      priorityName: data['priorityName'] as String? ?? '보통',
+      progressPercentage: data['progressPercentage'] as int? ?? 0,
+      isSubtask: data['isSubtask'] as bool? ?? false,
+      parentId: data['parentId'] as String?,
+      subtaskCount: data['subtaskCount'] as int? ?? 0,
       completedAt: completedAt,
       dueDate: dueDate,
-      wasOverdue: dueDate != null && completedAt.isAfter(dueDate),
+      dueTime: data['dueTime'] != null 
+          ? Map<String, int>.from(data['dueTime'])
+          : null,
+      dueDateType: data['dueDateType'] as int? ?? 0,
+      dueDateTypeName: data['dueDateTypeName'] as String? ?? '마감일 없음',
+      notificationInterval: data['notificationInterval'] as int? ?? 0,
+      notificationIntervalName: data['notificationIntervalName'] as String? ?? '없음',
+      wasOverdue: data['wasOverdue'] as bool? ?? (dueDate != null && completedAt.isAfter(dueDate)),
+      wasDueSoon: data['wasDueSoon'] as bool? ?? false,
     );
+  }
+
+  String get displayCategory {
+    if (category == '기타' && customCategory != null && customCategory!.isNotEmpty) {
+      return customCategory!;
+    }
+    return category;
+  }
+
+  String get dueTimeDisplay {
+    if (dueTime == null) return '';
+    return '${dueTime!['hour']!.toString().padLeft(2, '0')}:${dueTime!['minute']!.toString().padLeft(2, '0')}';
   }
 }
 

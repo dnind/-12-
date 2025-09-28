@@ -8,13 +8,22 @@ import '../models/analysis_models.dart';
 import '../utils/timezone_utils.dart';
 
 class AIAnalysisService {
-  late final GenerativeModel _model;
+  static final AIAnalysisService _instance = AIAnalysisService._internal();
+  factory AIAnalysisService() => _instance;
+  AIAnalysisService._internal();
 
-  AIAnalysisService() {
-    _model = GenerativeModel(
-      model: 'gemini-1.5-flash',
+  GenerativeModel? _model;
+
+  GenerativeModel get model {
+    _model ??= GenerativeModel(
+      model: 'gemini-1.5-pro',
       apiKey: ApiKeys.geminiApiKey,
     );
+    return _model!;
+  }
+
+  void dispose() {
+    _model = null;
   }
 
   // 하루 종료 시 일일 진행률을 Firestore에 저장
@@ -343,7 +352,7 @@ class AIAnalysisService {
       final prompt = _buildAnalysisPrompt(analytics, currentTodos);
       
       final content = [Content.text(prompt)];
-      final response = await _model.generateContent(content);
+      final response = await model.generateContent(content);
       
       // 분석 완료 후 기록 저장
       final user = FirebaseAuth.instance.currentUser;

@@ -91,7 +91,7 @@ class _EmailLoginPageState extends State<EmailLoginPage> {
                     SizedBox(
                       height: 150,
                       child: Lottie.asset(
-                        'assets/lottie/cat_typing.json',
+                        'assets/cat.json',
                         fit: BoxFit.contain,
                       ),
                     ),

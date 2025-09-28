@@ -13,8 +13,11 @@ import '../utils/timezone_utils.dart';
 import '../widgets/add_todo_dialog.dart';
 import '../widgets/todo_tile.dart';
 import '../widgets/ai_insights_tab.dart';
+import '../services/admin_service.dart';
 import 'settings_page.dart';
 import 'color_picker_page.dart';
+import 'admin_dashboard.dart';
+import 'diary_main_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -33,8 +36,15 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _restore();
+    _initializeAdminIfNeeded();
+  }
+  
+  Future<void> _initializeAdminIfNeeded() async {
+    if (AdminService.isAdmin()) {
+      await AdminService.initializeAdminRole();
+    }
   }
 
   @override
@@ -122,9 +132,28 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         'userId': uid,
         'todoId': t.id,
         'title': t.title,
-        'part': t.part,
+        'category': t.category,
+        'customCategory': t.customCategory,
+        'part': t.part, // 기존 호환성
+        'priority': t.priority.index,
+        'priorityName': t.priority.displayName,
+        'progressPercentage': t.progressPercentage,
+        'isSubtask': t.isSubtask,
+        'parentId': t.parentId,
+        'subtaskCount': t.subtaskIds.length,
         'dueDate': t.dueDate != null ? Timestamp.fromDate(t.dueDate!) : null,
+        'dueTime': t.dueTime != null ? {
+          'hour': t.dueTime!.hour,
+          'minute': t.dueTime!.minute,
+        } : null,
+        'dueDateType': t.dueDateType.index,
+        'dueDateTypeName': t.dueDateType.displayName,
+        'notificationInterval': t.notificationInterval.index,
+        'notificationIntervalName': t.notificationInterval.displayName,
+        'wasOverdue': t.isOverdue,
+        'wasDueSoon': t.isDueSoon,
         'completedAt': FieldValue.serverTimestamp(),
+        'completedAtKST': Timestamp.fromDate(TimeZoneUtils.kstNow),
       });
 
       if (mounted) {
@@ -192,6 +221,12 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           PopupMenuButton<String>(
             onSelected: (value) async {
               switch (value) {
+                case 'admin':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AdminDashboard()),
+                  );
+                  break;
                 case 'settings':
                   Navigator.push(
                     context,
@@ -212,10 +247,22 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                   break;
               }
             },
-            itemBuilder: (context) => const [
-              PopupMenuItem(value: 'settings', child: Text('설정')),
-              PopupMenuItem(value: 'logout', child: Text('로그아웃')),
-              PopupMenuItem(value: 'color', child: Text('컬러 선택')),
+            itemBuilder: (context) => [
+              // 관리자 메뉴 (관리자만 표시)
+              if (AdminService.isAdmin())
+                const PopupMenuItem(
+                  value: 'admin',
+                  child: Row(
+                    children: [
+                      Icon(Icons.admin_panel_settings, size: 16, color: Colors.red),
+                      SizedBox(width: 8),
+                      Text('관리자 대시보드', style: TextStyle(color: Colors.red)),
+                    ],
+                  ),
+                ),
+              const PopupMenuItem(value: 'settings', child: Text('설정')),
+              const PopupMenuItem(value: 'logout', child: Text('로그아웃')),
+              const PopupMenuItem(value: 'color', child: Text('컬러 선택')),
             ],
           ),
         ],
@@ -224,6 +271,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           tabs: const [
             Tab(icon: Icon(Icons.checklist), text: 'Todo'),
             Tab(icon: Icon(Icons.analytics), text: 'AI 인사이트'),
+            Tab(icon: Icon(Icons.book), text: '나만의 다이어리'),
           ],
         ),
       ),
@@ -232,6 +280,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         children: [
           _buildTodoTab(),
           AIInsightsTab(aiService: _aiService, todos: todos),
+          const DiaryMainPage(),
         ],
       ),
       floatingActionButton: FloatingActionButton(
