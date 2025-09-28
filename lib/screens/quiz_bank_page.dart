@@ -45,16 +45,22 @@ class _QuizBankPageState extends State<QuizBankPage> {
       for (final diary in studyDiaries) {
         print('다이어리 처리 중: ${diary.title}');
         print('AI 분석 존재: ${diary.aiAnalysis != null}');
-        print('카테고리별 분석 존재: ${diary.aiAnalysis != null ? diary.aiAnalysis!.containsKey('categorySpecific') : false}');
 
-        if (diary.aiAnalysis != null &&
-            diary.aiAnalysis!['categorySpecific'] != null) {
-          try {
-            final studyAnalysis = StudyAnalysis.fromJson(
-              diary.aiAnalysis!['categorySpecific'] as Map<String, dynamic>
-            );
+        if (diary.aiAnalysis != null) {
+          print('AI 분석 데이터: ${diary.aiAnalysis}');
+          print('카테고리별 분석 존재: ${diary.aiAnalysis!.containsKey('categorySpecific')}');
 
-            print('퀴즈 문제 개수: ${studyAnalysis.quizQuestions.length}');
+          if (diary.aiAnalysis!['categorySpecific'] != null) {
+            try {
+              final categoryData = diary.aiAnalysis!['categorySpecific'];
+              print('카테고리 데이터 타입: ${categoryData.runtimeType}');
+              print('카테고리 데이터: $categoryData');
+
+              final studyAnalysis = StudyAnalysis.fromJson(
+                categoryData as Map<String, dynamic>
+              );
+
+              print('퀴즈 문제 개수: ${studyAnalysis.quizQuestions.length}');
 
             // 각 퀴즈에 출처 다이어리 정보 추가
             for (final quiz in studyAnalysis.quizQuestions) {
