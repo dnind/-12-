@@ -21,7 +21,7 @@ class DiaryService {
         temperature: 0.7,
         topK: 40,
         topP: 0.95,
-        maxOutputTokens: 2048,
+        maxOutputTokens: 4096,
       ),
     );
     return _model!;
@@ -276,23 +276,32 @@ class DiaryService {
                   .toList();
             }
           } else if (trimmedLine.contains('첫 번째 문제:') || trimmedLine.contains('두 번째 문제:')) {
-            final questionData = trimmedLine.split(':')[1].trim();
-            final parts = questionData.split('|');
-            if (parts.length >= 7) {
-              try {
-                quizQuestions.add(QuizQuestion(
-                  question: parts[0].trim(),
-                  options: [
-                    parts[1].trim(),
-                    parts[2].trim(),
-                    parts[3].trim(),
-                    parts[4].trim(),
-                  ],
-                  correctAnswerIndex: int.parse(parts[5].trim()) - 1,
-                  explanation: parts[6].trim(),
-                ));
-              } catch (e) {
-                print('Error parsing quiz question: $e');
+            print('퀴즈 파싱 시도: $trimmedLine');
+            final colonIndex = trimmedLine.indexOf(':');
+            if (colonIndex != -1 && colonIndex < trimmedLine.length - 1) {
+              final questionData = trimmedLine.substring(colonIndex + 1).trim();
+              print('퀴즈 데이터: $questionData');
+              final parts = questionData.split('|');
+              print('파싱된 부분 개수: ${parts.length}');
+              if (parts.length >= 7) {
+                try {
+                  quizQuestions.add(QuizQuestion(
+                    question: parts[0].trim(),
+                    options: [
+                      parts[1].trim(),
+                      parts[2].trim(),
+                      parts[3].trim(),
+                      parts[4].trim(),
+                    ],
+                    correctAnswerIndex: int.parse(parts[5].trim()) - 1,
+                    explanation: parts[6].trim(),
+                  ));
+                  print('퀴즈 문제 추가 성공');
+                } catch (e) {
+                  print('Error parsing quiz question: $e');
+                }
+              } else {
+                print('퀴즈 부분이 부족함: ${parts.length}개 (최소 7개 필요)');
               }
             }
           }
@@ -303,6 +312,7 @@ class DiaryService {
           keyPoints: keyPoints,
           quizQuestions: quizQuestions,
         ).toJson();
+        print('StudyAnalysis 생성 완료 - 퀴즈 개수: ${quizQuestions.length}');
       } else if (category == DiaryCategory.travel) {
         List<String> places = [];
         List<String> recommendations = [];
