@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:macha/screens/calender_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/todo_model.dart';
@@ -30,6 +31,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   final AIAnalysisService _aiService = AIAnalysisService();
   late TabController _tabController;
 
+  DateTime? _filterDate; // 선택한 날짜
+
   int get completedCount => todos.where((t) => t.done).length;
 
   @override
@@ -48,7 +51,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
   @override
   void dispose() {
-    // 앱 종료 시 일일 진행률 저장
     _saveDailyProgressIfNeeded();
     _tabController.dispose();
     super.dispose();
@@ -77,11 +79,20 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     setState(() => _loading = false);
   }
 
-  Future<void> _addTodo(String title, String category, String? customCategory, DateTime? dueDate, TimeOfDay? dueTime, DueDateType dueDateType, Priority priority, NotificationInterval notificationInterval) async {
+  Future<void> _addTodo(
+      String title,
+      String category,
+      String? customCategory,
+      DateTime? dueDate,
+      TimeOfDay? dueTime,
+      DueDateType dueDateType,
+      Priority priority,
+      NotificationInterval notificationInterval,
+      ) async {
     final todo = Todo(
       id: TimeZoneUtils.kstNow.millisecondsSinceEpoch.toString(),
       title: title.trim(),
-      part: category,  // 기존 호환성
+      part: category,
       category: category,
       customCategory: customCategory,
       dueDate: dueDate,
@@ -89,9 +100,12 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       dueDateType: dueDateType,
       priority: priority,
       notificationInterval: notificationInterval,
-      nextNotificationTime: notificationInterval != NotificationInterval.none 
-        ? NotificationManager.calculateNextNotification(TimeZoneUtils.kstNow, notificationInterval)
-        : null,
+      nextNotificationTime: notificationInterval != NotificationInterval.none
+          ? NotificationManager.calculateNextNotification(
+        TimeZoneUtils.kstNow,
+        notificationInterval,
+      )
+          : null,
     );
     setState(() => todos.add(todo));
     await _persist();
@@ -101,20 +115,16 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     final wasDone = t.done;
     setState(() {
       t.done = !t.done;
-      
-      // 진행률 업데이트
       if (t.done) {
         t.progressPercentage = 100;
       } else {
         t.progressPercentage = 0;
       }
-      
-      // 부모 태스크 진행률 업데이트
       if (t.parentId != null) {
         ProgressManager.updateParentProgress(t.parentId!, todos);
       }
     });
-    
+
     await _persist();
 
     if (!wasDone && t.done) {
@@ -166,9 +176,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       await prefs.setString('completed_tasks', jsonEncode(completedTasksList));
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('완료 기록을 저장했어요.')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('완료 기록을 저장했어요.')));
       }
     } catch (e) {
       if (mounted) {
@@ -222,9 +232,27 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     showDialog(
       context: context,
       builder: (_) => AddTodoDialog(
-        onSubmit: (title, category, customCategory, dueDate, dueTime, dueDateType, priority, notificationInterval) async {
+        onSubmit: (
+            title,
+            category,
+            customCategory,
+            dueDate,
+            dueTime,
+            dueDateType,
+            priority,
+            notificationInterval,
+            ) async {
           if (title.trim().isNotEmpty) {
-            await _addTodo(title, category, customCategory, dueDate, dueTime, dueDateType, priority, notificationInterval);
+            await _addTodo(
+              title,
+              category,
+              customCategory,
+              dueDate,
+              dueTime,
+              dueDateType,
+              priority,
+              notificationInterval,
+            );
           }
         },
       ),
@@ -271,7 +299,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                 case 'logout':
                   // 로컬 모드에서는 로그인 화면으로 이동
                   if (context.mounted) {
-                    Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+                    Navigator.of(
+                      context,
+                    ).pushNamedAndRemoveUntil('/', (route) => false);
                   }
                   break;
                 case 'color':
@@ -330,7 +360,16 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (todos.isEmpty) {
+    final filteredTodos = _filterDate == null
+        ? todos
+        : todos.where((t) =>
+    t.dueDate != null &&
+        t.dueDate!.year == _filterDate!.year &&
+        t.dueDate!.month == _filterDate!.month &&
+        t.dueDate!.day == _filterDate!.day,
+    ).toList();
+
+    if (filteredTodos.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -338,14 +377,16 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
             const Icon(Icons.task_alt, size: 80, color: Colors.grey),
             const SizedBox(height: 20),
             Text(
-              '할 일이 없어요!',
+              _filterDate == null
+                  ? '할 일이 없어요!'
+                  : '${_filterDate!.month}월 ${_filterDate!.day}일 일정이 없어요!',
               style: GoogleFonts.dongle(fontSize: 30, color: Colors.grey),
             ),
-            const SizedBox(height: 10),
-            Text(
-              '새로운 할 일을 추가해보세요',
-              style: GoogleFonts.dongle(fontSize: 20, color: Colors.grey),
-            ),
+            if (_filterDate != null)
+              TextButton(
+                onPressed: () => setState(() => _filterDate = null),
+                child: const Text('모든 일정 보기'),
+              ),
           ],
         ),
       );
@@ -385,13 +426,16 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
               ),
               const Spacer(),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.indigo.shade600,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  '$completedCount / ${todos.length}',
+                  '${filteredTodos.where((t) => t.done).length} / ${filteredTodos.length}',
                   style: GoogleFonts.dongle(
                     color: Colors.white,
                     fontSize: 18,
@@ -405,9 +449,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         Expanded(
           child: ListView.builder(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: todos.length,
+            itemCount: filteredTodos.length,
             itemBuilder: (context, index) {
-              final todo = todos[index];
+              final todo = filteredTodos[index];
               return TodoTile(
                 todo: todo,
                 onToggle: () => _toggleDone(todo),
@@ -420,3 +464,4 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     );
   }
 }
+
