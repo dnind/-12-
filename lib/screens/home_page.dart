@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:macha/screens/calender_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/todo_model.dart';
 import '../managers/progress_manager.dart';
@@ -12,12 +14,8 @@ import '../utils/timezone_utils.dart';
 import '../widgets/add_todo_dialog.dart';
 import '../widgets/todo_tile.dart';
 import '../widgets/ai_insights_tab.dart';
-import '../services/admin_service.dart';
 import 'settings_page.dart';
 import 'color_picker_page.dart';
-import 'admin_dashboard.dart';
-import 'diary_main_page.dart';
-import 'diary_editor_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -38,15 +36,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
     _restore();
-    _initializeAdminIfNeeded();
-  }
-  
-  Future<void> _initializeAdminIfNeeded() async {
-    if (AdminService.isAdmin()) {
-      await AdminService.initializeAdminRole();
-    }
   }
 
   @override
@@ -57,9 +48,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }
 
   Future<void> _saveDailyProgressIfNeeded() async {
-    const user = 'local_user';
-    if (todos.isNotEmpty) {
-      await _aiService.saveDailyProgress(user, todos);
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null && todos.isNotEmpty) {
+      await _aiService.saveDailyProgress(user.uid, todos);
     }
   }
 
@@ -134,46 +125,17 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
   Future<void> _saveCompletionToFirestore(Todo t) async {
     try {
-      // 로컬 저장소에 완료 기록 저장
-      final prefs = await SharedPreferences.getInstance();
+      final user = FirebaseAuth.instance.currentUser;
+      final uid = user?.uid ?? 'anonymous';
 
-      // 기존 완료 기록 목록 가져오기
-      final completedTasksString = prefs.getString('completed_tasks') ?? '[]';
-      final List<dynamic> completedTasksList = jsonDecode(completedTasksString);
-
-      // 새로운 완료 기록 추가
-      final completionRecord = {
-        'userId': 'local_user',
+      await FirebaseFirestore.instance.collection('completed_tasks').add({
+        'userId': uid,
         'todoId': t.id,
         'title': t.title,
-        'category': t.category,
-        'customCategory': t.customCategory,
-        'part': t.part, // 기존 호환성
-        'priority': t.priority.index,
-        'priorityName': t.priority.displayName,
-        'progressPercentage': t.progressPercentage,
-        'isSubtask': t.isSubtask,
-        'parentId': t.parentId,
-        'subtaskCount': t.subtaskIds.length,
-        'dueDate': t.dueDate?.toIso8601String(),
-        'dueTime': t.dueTime != null ? {
-          'hour': t.dueTime!.hour,
-          'minute': t.dueTime!.minute,
-        } : null,
-        'dueDateType': t.dueDateType.index,
-        'dueDateTypeName': t.dueDateType.displayName,
-        'notificationInterval': t.notificationInterval.index,
-        'notificationIntervalName': t.notificationInterval.displayName,
-        'wasOverdue': t.isOverdue,
-        'wasDueSoon': t.isDueSoon,
-        'completedAt': DateTime.now().toIso8601String(),
-        'completedAtKST': TimeZoneUtils.kstNow.toIso8601String(),
-      };
-
-      completedTasksList.add(completionRecord);
-
-      // 완료 기록 목록 저장
-      await prefs.setString('completed_tasks', jsonEncode(completedTasksList));
+        'part': t.part,
+        'dueDate': t.dueDate != null ? Timestamp.fromDate(t.dueDate!) : null,
+        'completedAt': FieldValue.serverTimestamp(),
+      });
 
       if (mounted) {
         ScaffoldMessenger.of(
@@ -182,9 +144,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('로컬 저장 실패: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Firestore 저장 실패: $e')));
       }
     }
   }
@@ -208,23 +170,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           ),
         ),
       );
-    }
-  }
-
-  void _handleAddButtonPress() {
-    switch (_tabController.index) {
-      case 0: // Todo 탭
-        _openAddDialog();
-        break;
-      case 1: // AI 인사이트 탭
-        // AI 인사이트 탭에서는 + 버튼 비활성화하거나 다른 동작
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('AI 인사이트 탭에서는 새로운 항목을 추가할 수 없습니다.')),
-        );
-        break;
-      case 2: // 다이어리 탭
-        _openDiaryEditor();
-        break;
     }
   }
 
@@ -259,15 +204,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     );
   }
 
-  void _openDiaryEditor() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const DiaryEditorPage(),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final titleStyle = GoogleFonts.dongle(
@@ -284,12 +220,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           PopupMenuButton<String>(
             onSelected: (value) async {
               switch (value) {
-                case 'admin':
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const AdminDashboard()),
-                  );
-                  break;
                 case 'settings':
                   Navigator.push(
                     context,
@@ -297,7 +227,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                   );
                   break;
                 case 'logout':
-                  // 로컬 모드에서는 로그인 화면으로 이동
+                  await FirebaseAuth.instance.signOut();
                   if (context.mounted) {
                     Navigator.of(
                       context,
@@ -312,22 +242,10 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                   break;
               }
             },
-            itemBuilder: (context) => [
-              // 관리자 메뉴 (관리자만 표시)
-              if (AdminService.isAdmin())
-                const PopupMenuItem(
-                  value: 'admin',
-                  child: Row(
-                    children: [
-                      Icon(Icons.admin_panel_settings, size: 16, color: Colors.red),
-                      SizedBox(width: 8),
-                      Text('관리자 대시보드', style: TextStyle(color: Colors.red)),
-                    ],
-                  ),
-                ),
-              const PopupMenuItem(value: 'settings', child: Text('설정')),
-              const PopupMenuItem(value: 'logout', child: Text('로그아웃')),
-              const PopupMenuItem(value: 'color', child: Text('컬러 선택')),
+            itemBuilder: (context) => const [
+              PopupMenuItem(value: 'settings', child: Text('설정')),
+              PopupMenuItem(value: 'logout', child: Text('로그아웃')),
+              PopupMenuItem(value: 'color', child: Text('컬러 선택')),
             ],
           ),
         ],
@@ -336,7 +254,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           tabs: const [
             Tab(icon: Icon(Icons.checklist), text: 'Todo'),
             Tab(icon: Icon(Icons.analytics), text: 'AI 인사이트'),
-            Tab(icon: Icon(Icons.book), text: '나만의 다이어리'),
           ],
         ),
       ),
@@ -345,12 +262,37 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         children: [
           _buildTodoTab(),
           AIInsightsTab(aiService: _aiService, todos: todos),
-          const DiaryMainPage(),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _handleAddButtonPress,
-        child: const Icon(Icons.add),
+      floatingActionButton: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const SizedBox(width: 30),
+          FloatingActionButton(
+            heroTag: 'calendarBtn',
+            onPressed: () async {
+              final selectedDate = await showModalBottomSheet<DateTime>(
+                context: context,
+                isScrollControlled: true,
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                builder: (_) => const CalendarPage(),
+              );
+              if (selectedDate != null) {
+                setState(() {
+                  _filterDate = selectedDate;
+                });
+              }
+            },
+            child: const Icon(Icons.calendar_today),
+          ),
+          FloatingActionButton(
+            heroTag: 'addBtn',
+            onPressed: _openAddDialog,
+            child: const Icon(Icons.add),
+          ),
+        ],
       ),
     );
   }

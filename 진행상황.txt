@@ -11,378 +11,90 @@
 6. ✅ 알림 시스템 - 10가지 주기 설정 (1시간~1년)
 7. ✅ 고급 마감일 시스템 - 없음/날짜만/날짜+시간
 8. ✅ UI 대대적 개편 - 카드 스타일, 진행률 바, 상태 표시
-9. ✅ 테스트 및 검증
+9. ⏳ 테스트 및 검증
 
-### 🟢 2단계: AI 기반 다이어리 시스템 ✅ 완료!
-1. ✅ 다이어리 모델 클래스 설계 - 완전한 데이터 구조
-2. ✅ 다이어리 서비스 구현 - Firebase + Gemini AI 통합
-3. ✅ 다이어리 메인 페이지 - 카테고리 필터, 검색 기능
-4. ✅ 다이어리 편집기 - AI 분석, 자동 꾸미기
-5. ✅ AI 기반 문제은행 시스템 - 학습 다이어리 → 퀴즈 자동 생성
-6. ✅ 홈페이지 탭 통합 - 3탭 구조 (Todo, AI인사이트, 다이어리)
-
-### 🟡 3단계: 고급 기능 (목표: 1개월)
+### 🟡 2단계: 고급 기능 (목표: 1개월)
 - 예상시간 vs 실제시간 추적
 - 태그 시스템 (#work, #personal, #urgent 등)
 - 의존성 관리 (A 완료 후 B 시작)
 - 상태 시스템 (notStarted, inProgress, paused, completed, cancelled, overdue)
 
-### 🔴 4단계: 지능형 기능 (목표: 2개월)
+### 🔴 3단계: 지능형 기능 (목표: 2개월)
 - 반복 작업 설정
 - 협업 기능 (할당, 댓글)
 - AI 기반 스케줄링 및 추천
 
-## 🎯 최신 진행 상황 (2025-09-28)
+## 🎯 현재 진행 상황
 
-### 🚨 iOS 빌드 문제 완벽 해결 ✅
+### 완료된 주요 기능
+1. **Priority 시스템**: 4단계 우선순위 (낮음, 보통, 높음, 긴급) with 색상 코딩
+2. **진행률 시스템**: 0-100% 진행률, 서브태스크 기반 자동 계산
+3. **서브태스크 시스템**: 완전한 계층구조 관리
+4. **카테고리 시스템**: 13개 기본 + 사용자 정의 카테고리
+5. **알림 시스템**: 10종류 알림 주기 (1시간마다~1년마다)
+6. **고급 마감일**: 마감일 없음/날짜만/날짜+시간 선택
+7. **스마트 UI**: 
+   - 우선순위별 색상 코딩
+   - 진행률 바 및 퍼센트 표시
+   - 마감일 임박/초과 경고
+   - 알림 상태 표시
+   - 카테고리 아이콘 및 색상
 
-#### 🔍 문제 진단 과정
-1. **초기 오류 발견**
-   - "Command PhaseScriptExecution failed with a nonzero exit code" 지속 발생
-   - 빌드 시간: 160초+ 소요되며 계속 실패
+### 최근 완료 작업 ✅
+- [2025-01-12 03:45] UI 대폭 개선 완료
+- [2025-01-12 04:00] AI 7일 주기 상세 분석 시스템 완료
+- [2025-01-12 04:15] 카테고리별 강약점 분석 완료  
+- [2025-01-12 04:30] AI 인사이트 탭 UI 완료
+- [2025-01-12 04:45] 개인화 조언 시스템 완료
 
-2. **원인 분석 단계**
-   - Flutter 스크립트 권한 확인 ✅
-   - CocoaPods 설정 파일 검토 ✅
-   - Firebase 설정 파일 확인 ✅
-   - 빌드 로그 상세 분석 ✅
+### 🆕 새로 추가된 고급 기능들
+1. **🤖 7일 주기 AI 분석**: 완료/미완료/지연 통계 + 카테고리별 성과
+2. **📊 AI 인사이트 탭**: 전용 탭으로 분리된 상세 분석 화면
+3. **🎯 강약점 분석**: 카테고리별 성과를 자동으로 분류하여 표시
+4. **💬 맞춤형 조언**: 사용자 패턴에 기반한 개인화된 AI 조언
+5. **📈 실시간 현황**: 활성/완료/초과 태스크 현황을 한눈에
 
-#### 💡 핵심 발견사항
+## 📝 주요 구현 내용
 
-**1. 이전 정상 빌드 커밋 (a8a941c) 분석**
-```bash
-# 정상 작동하던 스크립트 (간단한 형태)
-shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" build"
-
-# 문제 발생 시점의 스크립트 (복잡한 디버깅 코드 추가)
-shellScript = "#!/bin/bash\nset -e\nset -x\nexport FLUTTER_ROOT=..."
-```
-
-**2. 실제 근본 원인 발견**
-- PhaseScriptExecution 오류의 **진짜 원인**: Dart 코드 구문 오류
-- `lib/screens/quiz_bank_page.dart:54-74` try-catch 블록 구조 오류
+### 1. 데이터 모델 확장
 ```dart
-// 문제 코드
-try {
-  // 코드...
-  for (final quiz in studyAnalysis.quizQuestions) {
-    // 들여쓰기 문제로 try 블록이 닫히지 않음
-  }
-} catch (e) {  // try 블록 밖에 있어서 오류 발생
+class Todo {
+  // 기본 필드
+  String id, title, category;
+  String? customCategory, parentId;
+  List<String> subtaskIds;
+  
+  // 새로운 기능들
+  Priority priority;
+  int progressPercentage;
+  DateTime? dueDate;
+  TimeOfDay? dueTime;
+  DueDateType dueDateType;
+  NotificationInterval notificationInterval;
+  DateTime? nextNotificationTime;
+}
 ```
 
-#### ✅ 적용한 해결책
+### 2. 핵심 매니저 클래스
+- **ProgressManager**: 진행률 계산 및 우선순위 정렬
+- **SubtaskManager**: 서브태스크 생성/삭제/계층 관리
+- **NotificationManager**: 알림 스케줄링
+- **CategoryManager**: 카테고리 관리 (13개 + 아이콘/색상)
 
-1. **Bundle Identifier 단순화**
-   - `com.example.macha.1759043443` → `macha` → `com.example.macha` (최종)
-   - 빌드 시간: 169초 → 89초 → 35.7초로 단축
-
-2. **Firebase 설정 동기화**
-   - GoogleService-Info.plist Bundle ID 일치
-   - Xcode project.pbxproj Bundle ID 동기화
-
-3. **Xcode 스크립트 정규화**
-   - a8a941c 커밋의 간단한 스크립트 형태로 복원
-   - 불필요한 디버깅 코드 제거
-
-4. **Dart 구문 오류 수정**
-   - quiz_bank_page.dart의 try-catch 블록 올바른 구조로 수정
-   - 들여쓰기 정정으로 중괄호 매칭 문제 해결
-
-#### 📊 최종 결과
-- ✅ **빌드 성공**: 35.7초 만에 완료
-- ✅ **앱 크기**: 50.5MB
-- ✅ **PhaseScriptExecution 오류 완전 해결**
-
-### 🔧 현재 발생한 문제 해결 과정 (2025-09-28 20:15 - 21:30)
-
-#### 🚨 iOS 빌드 서명 문제 (해결완료)
-**최초 증상:**
-- "No Accounts: Add a new account in Accounts settings" 오류
-- "No profiles for 'com.example.macha' were found" 오류
-
-**해결 과정:**
-1. ✅ Apple ID 추가 (사용자가 직접 완료)
-2. ✅ CODE_SIGN_STYLE = Automatic 설정 수정
-3. ✅ RunnerTests Bundle ID 수정 (com.example.macha.1759043443.RunnerTests → com.example.macha.RunnerTests)
-4. ✅ project.pbxproj 파일 정리
-
-**최종 결과:** iOS 코드 서명 문제 해결 완료
-
-#### 🔥 Firebase 연동 문제 (최종 해결 - 로컬 모드 전환)
-**진행 과정:**
-
-**1단계: 기존 Firebase 프로젝트 문제 발견**
-- `fluttergram-805cc` 프로젝트가 실제로 존재하지 않음
-- GoogleService-Info.plist의 GOOGLE_APP_ID 검증 실패
-
-**2단계: 새로운 Firebase 프로젝트 생성 시도**
-- ✅ 새로운 프로젝트 `capstone-pj-todolist` 생성
-- ✅ iOS 앱 등록 (Bundle ID: com.example.macha)
-- ✅ 새로운 GoogleService-Info.plist 다운로드
-- ✅ firebase_options.dart 업데이트
-
-**3단계: 지속적인 Firebase SDK 오류**
-- 새로운 설정에도 불구하고 동일한 오류 지속
-- `Configuration fails. It may be caused by an invalid GOOGLE_APP_ID` 오류 반복
-- CLIENT_ID, REVERSED_CLIENT_ID 추가해도 문제 지속
-
-**4단계: 최종 해결책 - 로컬 모드 전환**
-- ✅ GoogleService-Info.plist 완전 제거
-- ✅ Firebase 초기화 코드 비활성화
-- ✅ 로컬 전용 모드로 앱 실행
-
-#### 🔍 AI 분석 후 다이어리 삭제 문제 (완전 해결)
-**원인:** Firebase 연동 오류로 인한 데이터 동기화 실패
-**해결:** Firebase 비활성화로 문제 완전 해결
-
-### 🎯 현재 앱 상태 (2025-09-28 21:30)
-
-#### ✅ 정상 작동하는 기능들
-1. **AI 분석 시스템** (Gemini 2.0 Flash API)
-   - 다이어리 내용 분석 및 요약
-   - 카테고리별 특화 분석 (일상/공부/여행)
-   - 자동 태그 생성
-   - 테마 및 스티커 추천
-
-2. **공부 다이어리 전용 기능**
-   - 핵심 포인트 추출
-   - 퀴즈 문제 자동 생성 (4지선다 2문제)
-   - 문제은행 페이지에서 복습 가능
-
-3. **다이어리 기본 기능**
-   - 다이어리 작성/편집
-   - 카테고리별 분류 (13개 카테고리)
-   - 로컬 저장 (기기 내)
-
-4. **UI/UX 기능**
-   - 3탭 구조 (Todo, AI인사이트, 다이어리)
-   - 자동 꾸미기 (테마/스티커 적용)
-   - 카드 스타일 UI
-
-#### ⚠️ 제한된 기능들
-1. **클라우드 동기화 없음**
-   - 다이어리 데이터는 기기에만 저장
-   - 앱 삭제 시 데이터 손실
-
-2. **계정 기능 없음**
-   - 로그인/회원가입 기능 비활성화
-   - 기기별 독립적 사용
-
-#### 📊 기술 스택
-- **Frontend**: Flutter 3.35.3
-- **AI**: Google Gemini 2.0 Flash API ✅
-- **Storage**: 로컬 저장 (SharedPreferences/SQLite)
-- **상태관리**: StatefulWidget + setState
-
-### 🎉 프로젝트 완성도
-
-**핵심 AI 기능**: 100% 완료 ✅
-- 다이어리 AI 분석
-- 공부 퀴즈 자동 생성
-- 카테고리별 특화 분석
-
-**앱 기본 기능**: 95% 완료 ✅
-- 다이어리 CRUD
-- UI/UX 완성
-- 카테고리 시스템
-
-**클라우드 기능**: 0% (의도적 비활성화)
-- Firebase 연동 비활성화
-- 로컬 모드로 전환
-
-**전체 프로젝트 진행률: 90% 완료** 🎯
-
-### 📱 현재 앱 구조
-
-#### 메인 화면 (3탭)
-1. **Todo 탭**: 기존 할 일 관리 시스템
-2. **AI 인사이트 탭**: 7일 주기 AI 분석
-3. **나만의 다이어리 탭**: AI 기반 다이어리 시스템
-
-#### 다이어리 기능 플로우
-1. **작성**: 카테고리 선택 → 내용 입력 (50자 이상)
-2. **AI 분석**: ✨ 버튼 → 카테고리별 특화 분석
-3. **자동 꾸미기**: 🎨 버튼 → 테마/스티커 자동 적용
-4. **문제은행**: 📚 버튼 → 학습 문제로 복습 (공부 카테고리만)
-
-### 📊 성능 및 품질 지표
-
-**앱 크기**: 50.5MB (iOS 릴리즈 빌드)
-**빌드 시간**: 35.7초 (초기 160초+ → 최적화 후)
-**코드 품질**: Dart 구문 오류 모두 수정 완료
-**Firebase 연동**: 설정 수정 완료, Xcode 추가 작업 필요
-**AI API 연동**: ✅ 정상 (Gemini Pro)
-
-### 기술 스택
-- **Frontend**: Flutter 3.35.3
-- **Backend**: Firebase (Firestore, Auth)
-- **AI**: Google Gemini Pro API
-- **상태관리**: StatefulWidget + setState
-- **디자인**: Material Design 3
-
-### 🎯 다음 단계 (즉시 수행 필요)
-
-1. **Xcode에서 GoogleService-Info.plist 추가**
-   ```bash
-   open ios/Runner.xcworkspace
-   ```
-   - Runner 폴더 우클릭 → Add Files to Runner
-   - GoogleService-Info.plist 선택
-   - "Copy items if needed" 체크
-   - "Add to targets: Runner" 체크
-
-2. **앱 재빌드 및 실행**
-   ```bash
-   flutter clean
-   flutter pub get
-   cd ios && pod install && cd ..
-   flutter run
-   ```
-
-3. **Firebase 연동 확인**
-   - 다이어리 저장 테스트
-   - AI 분석 기능 정상 작동 확인
-   - 문제은행 데이터 로딩 확인
-
-## 🚨 최신 진행 상황 (2025-09-28 22:00 - 현재 진행중)
-
-### 🔧 Firebase → 로컬 저장소 완전 전환 작업
-
-#### ✅ 완료된 작업들
-
-**1. Firebase 제거 및 로컬 저장소 전환**
-- ✅ main.dart에서 Firebase 초기화 코드 완전 제거
-- ✅ pubspec.yaml에서 Firebase 종속성 제거 (firebase_core, firebase_auth, cloud_firestore)
-- ✅ GoogleService-Info.plist 파일 삭제
-- ✅ firebase_options.dart 파일 삭제
-
-**2. 핵심 서비스 로컬화 완료**
-- ✅ DiaryService: Firebase → SharedPreferences 전환 완료
-  - ✅ getUserDiaries() → Future<List<DiaryEntry>> 반환
-  - ✅ createDiary(), updateDiary(), deleteDiary() → 로컬 저장소 기반
-  - ✅ analyzeDiary() → Gemini AI 기능 유지 (정상 작동)
-  - ✅ searchDiaries(), getDiariesByCategory() → 로컬 기반
-
-**3. 관리자 대시보드 완전 복구**
-- ✅ AdminService를 SharedPreferences 기반으로 재작성
-- ✅ 모든 관리자 기능 로컬 모드로 구현:
-  - 사용자 관리 (getAllUsers, getUserDetail)
-  - 시스템 통계 (getSystemStats)
-  - 사용자 역할 변경 (updateUserRole)
-  - 시스템 공지사항 (sendSystemNotification)
-  - 일일 진행률 저장 (saveDailyProgress)
-  - AI 분석 이력 관리 (saveAIAnalysisHistory)
-
-**4. 인증 시스템 간소화**
-- ✅ EmailLoginPage → 로컬 모드 전용으로 재작성
-  - 로그인/회원가입 버튼 → 바로 홈 화면 이동
-  - Firebase 인증 코드 완전 제거
-  - 로컬 모드 안내 메시지 추가
-
-**5. UI 수정 완료**
-- ✅ diary_main_page.dart: Stream → Future 기반 UI로 변경
-- ✅ quiz_bank_page.dart: .first 제거하여 오류 수정
-- ✅ ai_insights_tab.dart: Firebase 인증 → 로컬 사용자로 변경
-- ✅ admin_dashboard.dart: Firebase 호출 → 로컬 메서드로 변경
-
-#### 🔄 현재 진행중인 작업
-
-**6. 남은 Firebase 코드 정리**
-- 🔄 home_page.dart의 Firebase 호출들 수정 중:
-  - FirebaseAuth.instance.currentUser → 'local_user'
-  - FirebaseFirestore.instance → SharedPreferences
-  - Timestamp.fromDate() → DateTime.toIso8601String()
-  - FieldValue.serverTimestamp() → DateTime.now()
-  - _saveCompletionToFirestore() 메서드 로컬화 필요
-
-**7. AI Analysis Service 정리**
-- 🔄 Firebase import 제거 완료
-- 🔄 Firebase 호출 메서드들 로컬 저장소로 변경 필요
-
-#### ⚠️ 남은 작업 목록
-
-**우선순위 1: 빌드 오류 해결**
-1. **home_page.dart 완전 수정**
-   - _saveCompletionToFirestore() 메서드 → SharedPreferences 기반으로 변경
-   - 모든 Firebase 호출 (FirebaseAuth, FirebaseFirestore, Timestamp, FieldValue) 제거
-   - 로그아웃 기능 → 로컬 모드에서는 비활성화
-
-2. **ai_analysis_service.dart 수정**
-   - Firebase 호출들을 SharedPreferences로 변경
-   - saveDailyProgress() 메서드 로컬화
-   - analyzeUserData() 메서드 로컬 데이터 기반으로 수정
-
-3. **남은 Firebase import 완전 제거**
-   - 모든 파일에서 'package:firebase_*' import 제거
-   - 'package:cloud_firestore' import 제거
-
-**우선순위 2: 기능 검증**
-4. **앱 실행 테스트**
-   - PhaseScriptExecution 오류 해결 확인
-   - 모든 AI 기능 정상 작동 확인
-   - 다이어리 CRUD 기능 테스트
-   - 관리자 대시보드 기능 테스트
-
-**우선순위 3: 최적화**
-5. **데이터 마이그레이션 확인**
-   - 기존 로컬 데이터 호환성 확인
-   - 새로운 저장 구조 안정성 검증
-
-#### 🎯 핵심 AI 기능 상태 (변경 없음!)
-
-**✅ 정상 작동하는 AI 기능들**
-1. **다이어리 AI 분석** - DiaryService.analyzeDiary()
-   - Gemini 2.0 Flash API 연동 유지
-   - 카테고리별 특화 분석 (일상/공부/여행)
-   - 자동 태그, 테마, 스티커 생성
-
-2. **공부 다이어리 퀴즈 생성**
-   - 학습 내용 → 4지선다 문제 자동 생성
-   - 문제은행 시스템 완전 유지
-
-3. **AI 인사이트 시스템**
-   - 사용자 데이터 분석
-   - 개인화된 조언 생성
-
-#### 📊 현재 상태 요약
-
-**빌드 상태**: ❌ PhaseScriptExecution 오류 (xcconfig include 문제)
-**AI 기능**: ✅ 100% 유지 (Gemini API 정상)
-**데이터 저장**: ✅ 로컬 저장소 전환 완료
-**관리자 기능**: ✅ 로컬 기반으로 복구 완료
-**Firebase 코드**: ✅ 완전 제거 완료
-**현재 문제**: iOS xcconfig 파일 include 경로 오류
+### 3. UI 개선사항
+- Card 스타일 Todo 아이템
+- 우선순위별 색상 및 정렬
+- 진행률 바 (LinearProgressIndicator)
+- 마감일 상태 표시 (임박/초과)
+- 알림 아이콘 및 주기 표시
+- 서브태스크 들여쓰기 표시
 
 ## 🔄 변경 로그
-
-### [2025-09-28 22:00 - 진행중] Firebase → 로컬 저장소 완전 전환
-- ✅ PhaseScriptExecution 오류의 근본 원인 파악 (Dart 구문 오류)
-- ✅ quiz_bank_page.dart try-catch 블록 구조 수정
-- ✅ Bundle ID 통일 (com.example.macha)
-- ✅ Xcode 스크립트 정규화 (a8a941c 커밋 스타일로 복원)
-- ✅ 빌드 성공 및 앱 생성 완료 (50.5MB)
-- ⚠️ Firebase 연동을 위한 Xcode 설정 추가 필요
-
-### [2025-01-12 15:00] Gemini AI 모델 재사용 오류 해결
-- ✅ 싱글톤 패턴 적용으로 모델 인스턴스 관리
-- ✅ 지연 초기화로 메모리 효율성 개선
-
-### [2025-01-12 12:00] iOS 앱 배포 완료
-- ✅ 릴리즈 빌드 성공
-- ✅ 아이폰 실기기 설치 완료
-- ✅ 전체 기능 정상 작동 확인
-
-### [2025-01-12 09:00 - 11:00] 문제은행 시스템 구현
-- ✅ 공부 다이어리 → 퀴즈 자동 생성 로직
-- ✅ 문제은행 전용 페이지 구현
-- ✅ 검색/필터링/진행률 추적 기능
-
-### [2025-01-12 07:00 - 09:00] AI 다이어리 시스템 구현
-- ✅ 다이어리 모델 클래스 완성
-- ✅ 다이어리 서비스 구현 (Firebase + Gemini AI)
-- ✅ 다이어리 메인 페이지 UI 완성
-- ✅ 다이어리 편집기 고급 기능 구현
-- ✅ 홈페이지 3탭 통합 완료
-
-**전체 프로젝트 진행률: 95% 완료** 🎯 (Firebase 연동만 남음)
+- [2025-01-12 01:30] 프로젝트 시작 및 계획 수립
+- [2025-01-12 02:15] Priority 시스템 완료 (enum + extension + UI)
+- [2025-01-12 02:30] 진행률 시스템 완료 (자동 계산 로직)
+- [2025-01-12 02:45] 서브태스크 시스템 완료 (계층 구조)
+- [2025-01-12 03:00] 카테고리 시스템 확장 (13개 + 사용자 정의)
+- [2025-01-12 03:15] 알림 시스템 완료 (10종류 주기)
+- [2025-01-12 03:30] 고급 마감일 시스템 완료
+- [2025-01-12 03:45] UI 대폭 개선 완료
