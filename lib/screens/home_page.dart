@@ -348,9 +348,63 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           const DiaryMainPage(),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _handleAddButtonPress,
-        child: const Icon(Icons.add),
+      floatingActionButton: Stack(
+        children: [
+          // 기존 + 버튼 (왼쪽 아래로 살짝 이동)
+          Positioned(
+            bottom: 16,
+            right: 80,
+            child: FloatingActionButton(
+              heroTag: "addButton",
+              onPressed: _handleAddButtonPress,
+              backgroundColor: Colors.indigo.shade400,
+              child: const Icon(Icons.add, color: Colors.white),
+            ),
+          ),
+
+          // ✅ 새 캘린더 버튼 (오른쪽 아래)
+          Positioned(
+            bottom: 16,
+            right: 16,
+            child: FloatingActionButton(
+              heroTag: "calendarButton",
+              backgroundColor: Colors.pinkAccent.shade200,
+              onPressed: () {
+                showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true, // 위로 쭉 올라오게
+                  backgroundColor: Colors.transparent, // 둥근 효과
+                  builder: (context) => FractionallySizedBox(
+                    heightFactor: 0.95, // 거의 전체 화면
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(25),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.2),
+                            blurRadius: 10,
+                            offset: const Offset(0, -2),
+                          ),
+                        ],
+                      ),
+                      child: CalendarPage(
+                        onDateSelected: (selectedDate) {
+                          setState(() {
+                            _filterDate = selectedDate;
+                          });
+                        },
+                      ),
+                    ),
+                  ),
+                );
+              },
+              child: const Icon(Icons.calendar_month, color: Colors.white),
+            ),
+          ),
+        ],
       ),
     );
   }
