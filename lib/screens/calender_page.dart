@@ -1,7 +1,8 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../models/todo_model.dart';
 
 class CalendarPage extends StatefulWidget {
   final Function(DateTime)? onDateSelected; // ✅ 날짜 선택 콜백
@@ -17,29 +18,33 @@ class _CalendarPageState extends State<CalendarPage> {
   DateTime? _selectedDay;
   Map<DateTime, List<String>> _todosByDate = {};
 
-  User? get currentUser => FirebaseAuth.instance.currentUser;
-
   @override
   void initState() {
     super.initState();
     _loadAllTodos();
   }
 
-  /// ✅ Firestore에서 사용자 일정 불러오기
+  /// ✅ SharedPreferences에서 사용자 일정 불러오기
   Future<void> _loadAllTodos() async {
-    if (currentUser == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('todos');
 
-    final snap = await FirebaseFirestore.instance
-        .collection('todos')
-        .where("userId", isEqualTo: currentUser!.uid)
-        .get();
+    if (raw == null) {
+      setState(() => _todosByDate = {});
+      return;
+    }
+
+    final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
+    final todos = list.map(Todo.fromMap).toList();
 
     final Map<DateTime, List<String>> loaded = {};
-    for (var doc in snap.docs) {
-      final date = DateTime.parse(doc["date"]);
-      final normalized = DateTime(date.year, date.month, date.day);
-      loaded.putIfAbsent(normalized, () => []);
-      loaded[normalized]!.add(doc["title"]);
+    for (var todo in todos) {
+      if (todo.dueDate != null) {
+        final date = todo.dueDate!;
+        final normalized = DateTime(date.year, date.month, date.day);
+        loaded.putIfAbsent(normalized, () => []);
+        loaded[normalized]!.add(todo.title);
+      }
     }
 
     setState(() => _todosByDate = loaded);

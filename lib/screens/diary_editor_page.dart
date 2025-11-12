@@ -728,15 +728,18 @@ class _DiaryEditorPageState extends State<DiaryEditorPage> {
         _selectedTheme = analysis.suggestedTheme;
       });
 
+      // AI 분석 후 자동으로 꾸미기 적용
+      await _applyDecoration();
+
       // AI 분석 후 자동 저장 (기존 다이어리인 경우만)
       if (widget.diary != null) {
         await _saveDiary();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('AI 분석이 완료되고 저장되었습니다!')),
+          const SnackBar(content: Text('AI 분석 완료 및 배경색이 적용되었습니다!')),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('AI 분석 완료! 저장 버튼을 눌러 저장하세요.')),
+          const SnackBar(content: Text('AI 분석 완료! 배경색이 적용되었습니다. 저장 버튼을 눌러 저장하세요.')),
         );
       }
     } catch (e) {
@@ -754,6 +757,8 @@ class _DiaryEditorPageState extends State<DiaryEditorPage> {
     final decoration = await _diaryService.generateDecoration(
       _selectedTheme!,
       _selectedStickers,
+      aiBackgroundColor: _aiAnalysis?.backgroundColor,
+      aiTextColor: _aiAnalysis?.textColor,
     );
 
     setState(() => _decoration = decoration);

@@ -179,9 +179,12 @@ class DiaryService {
 
 1. 요약: [다이어리 내용의 핵심을 2-3문장으로 구체적으로 요약해주세요]
 2. 조언: [작성자의 상황에 맞는 구체적이고 실용적인 조언을 3문장 이상 작성해주세요]
-3. 추천 태그: [내용에서 추출한 핵심 키워드 5-7개를 쉼표로 구분해주세요]
+3. 추천 태그: [내용에서 추출한 핵심 키워드 5-7개를 쉼표로 구분해주세요. 반드시 색상 관련 키워드 1-2개를 포함하세요 (예: 파란색, 따뜻한색감, 핑크톤, 차분한색상 등)]
 4. 추천 테마: [minimal, vintage, cute, professional, nature, cosmic 중 정확히 하나만 선택해주세요]
 5. 추천 스티커: [내용의 감정과 분위기에 맞는 이모지 5-8개를 쉼표로 구분해주세요]
+6. 배경색: [다이어리 내용의 감정과 분위기에 가장 잘 어울리는 배경색을 HEX 코드로 추천 (예: #FFE4E1). 추천 태그의 색상 키워드와 일치하는 색을 선택하세요]
+7. 텍스트색: [배경색과 잘 어울리면서 가독성이 좋은 텍스트 색상을 HEX 코드로 추천 (예: #2C3E50)]
+8. 강조색: [중요한 요소를 강조할 때 사용할 포인트 색상을 HEX 코드로 추천 (예: #FF69B4)]
 ''';
 
     switch (category) {
@@ -189,10 +192,18 @@ class DiaryService {
         basePrompt += '''
 
 === 학습 전용 분석 ===
-6. 핵심 포인트: [학습한 내용의 핵심 개념 4-6개를 구체적으로 나열]
-7. 퀴즈 문제: [학습 내용을 바탕으로 한 4지선다 문제 2개]
+9. 핵심 포인트: [학습한 내용의 핵심 개념 4-6개를 쉼표로 구분하여 나열]
+
+10. 퀴즈 문제: [학습 내용을 바탕으로 한 4지선다 문제를 정확히 2개 생성]
+
+⚠️ 중요: 아래 형식을 정확히 지켜주세요! 반드시 "첫 번째 문제:"와 "두 번째 문제:"로 시작해야 하며, "|" 기호로 구분해야 합니다.
+
    - 첫 번째 문제: 질문내용|선택지1|선택지2|선택지3|선택지4|정답번호(1-4)|상세한 설명
    - 두 번째 문제: 질문내용|선택지1|선택지2|선택지3|선택지4|정답번호(1-4)|상세한 설명
+
+예시:
+   - 첫 번째 문제: 제1정규화의 주요 목적은 무엇인가?|원자값만 저장|부분 함수 종속성 제거|이행 함수 종속성 제거|데이터 중복 최소화|1|제1정규화는 각 속성이 원자값(더 이상 나눌 수 없는 값)만 가지도록 하는 것이 목적입니다.
+   - 두 번째 문제: 정규화를 통해 해결할 수 있는 문제가 아닌 것은?|삽입 이상|삭제 이상|갱신 이상|쿼리 성능 저하|4|정규화는 데이터 이상 현상을 해결하지만, 조인 연산이 증가하여 오히려 쿼리 성능이 저하될 수 있습니다.
 
 💡 학습 조언: 효과적인 복습 방법이나 다음 학습 방향을 구체적으로 제시해주세요.
 ''';
@@ -201,8 +212,8 @@ class DiaryService {
         basePrompt += '''
 
 === 여행 전용 분석 ===
-6. 언급된 장소: [텍스트에서 언급된 모든 장소명을 정확히 추출하여 쉼표로 구분]
-7. 추천 장소: [언급된 지역 기반으로 실제 추천할 만한 관광지나 맛집 3-4곳]
+9. 언급된 장소: [텍스트에서 언급된 모든 장소명을 정확히 추출하여 쉼표로 구분]
+10. 추천 장소: [언급된 지역 기반으로 실제 추천할 만한 관광지나 맛집 3-4곳]
 
 🗺️ 여행 조언: 해당 지역의 추가 여행 팁이나 주의사항을 구체적으로 제시해주세요.
 ''';
@@ -211,8 +222,8 @@ class DiaryService {
         basePrompt += '''
 
 === 일상 전용 분석 ===
-6. 감정 분석: [긍정적/중립/부정적 중 하나와 그 이유를 간단히 설명]
-7. 내일을 위한 팁: [오늘의 경험을 바탕으로 내일 더 나은 하루를 위한 구체적인 조언 2-3가지]
+9. 감정 분석: [긍정적/중립/부정적 중 하나와 그 이유를 간단히 설명]
+10. 내일을 위한 팁: [오늘의 경험을 바탕으로 내일 더 나은 하루를 위한 구체적인 조언 2-3가지]
 
 💭 라이프스타일 조언: 더 나은 일상을 위한 실용적인 제안을 해주세요.
 ''';
@@ -240,6 +251,9 @@ class DiaryService {
       List<String> tags = [];
       DiaryTheme theme = DiaryTheme.minimal;
       List<String> stickers = [];
+      String? backgroundColor;
+      String? textColor;
+      String? accentColor;
       Map<String, dynamic>? categorySpecific;
 
       // 더 정확한 파싱을 위한 정규식 사용
@@ -262,14 +276,42 @@ class DiaryService {
             (t) => themeName.contains(t.name),
             orElse: () => DiaryTheme.minimal,
           );
-        } else if (trimmedLine.startsWith('5. 추천 스티커:')) {
-          final stickerStart = trimmedLine.indexOf(':') + 1;
+        } else if (trimmedLine.startsWith('5. 추천 스티커:') || trimmedLine.startsWith('5: 추천 스티커:')) {
+          final stickerStart = trimmedLine.indexOf('추천 스티커:') + 6;
           if (stickerStart > 0 && stickerStart < trimmedLine.length) {
             stickers = trimmedLine.substring(stickerStart)
                 .split(',')
                 .map((s) => s.trim())
                 .where((s) => s.isNotEmpty)
                 .toList();
+          }
+        } else if (trimmedLine.startsWith('6. 배경색:') || trimmedLine.startsWith('6: 배경색:')) {
+          final colorStart = trimmedLine.indexOf('배경색:') + 4;
+          if (colorStart > 0 && colorStart < trimmedLine.length) {
+            final colorText = trimmedLine.substring(colorStart).trim();
+            // HEX 코드 추출 (# 포함)
+            final hexMatch = RegExp(r'#[0-9A-Fa-f]{6}').firstMatch(colorText);
+            if (hexMatch != null) {
+              backgroundColor = hexMatch.group(0);
+            }
+          }
+        } else if (trimmedLine.startsWith('7. 텍스트색:') || trimmedLine.startsWith('7: 텍스트색:')) {
+          final colorStart = trimmedLine.indexOf('텍스트색:') + 5;
+          if (colorStart > 0 && colorStart < trimmedLine.length) {
+            final colorText = trimmedLine.substring(colorStart).trim();
+            final hexMatch = RegExp(r'#[0-9A-Fa-f]{6}').firstMatch(colorText);
+            if (hexMatch != null) {
+              textColor = hexMatch.group(0);
+            }
+          }
+        } else if (trimmedLine.startsWith('8. 강조색:') || trimmedLine.startsWith('8: 강조색:')) {
+          final colorStart = trimmedLine.indexOf('강조색:') + 4;
+          if (colorStart > 0 && colorStart < trimmedLine.length) {
+            final colorText = trimmedLine.substring(colorStart).trim();
+            final hexMatch = RegExp(r'#[0-9A-Fa-f]{6}').firstMatch(colorText);
+            if (hexMatch != null) {
+              accentColor = hexMatch.group(0);
+            }
           }
         }
       }
@@ -282,7 +324,7 @@ class DiaryService {
         for (final line in lines) {
           final trimmedLine = line.trim();
 
-          if (trimmedLine.startsWith('6. 핵심 포인트:')) {
+          if (trimmedLine.startsWith('9. 핵심 포인트:') || trimmedLine.startsWith('9: 핵심 포인트:')) {
             final pointStart = trimmedLine.indexOf(':') + 1;
             if (pointStart > 0 && pointStart < trimmedLine.length) {
               keyPoints = trimmedLine.substring(pointStart)
@@ -336,7 +378,7 @@ class DiaryService {
         for (final line in lines) {
           final trimmedLine = line.trim();
 
-          if (trimmedLine.startsWith('6. 언급된 장소:')) {
+          if (trimmedLine.startsWith('9. 언급된 장소:') || trimmedLine.startsWith('9: 언급된 장소:')) {
             final placeStart = trimmedLine.indexOf(':') + 1;
             if (placeStart > 0 && placeStart < trimmedLine.length) {
               places = trimmedLine.substring(placeStart)
@@ -345,7 +387,7 @@ class DiaryService {
                   .where((p) => p.isNotEmpty)
                   .toList();
             }
-          } else if (trimmedLine.startsWith('7. 추천 장소:')) {
+          } else if (trimmedLine.startsWith('10. 추천 장소:') || trimmedLine.startsWith('10: 추천 장소:')) {
             final recStart = trimmedLine.indexOf(':') + 1;
             if (recStart > 0 && recStart < trimmedLine.length) {
               recommendations = trimmedLine.substring(recStart)
@@ -369,12 +411,12 @@ class DiaryService {
         for (final line in lines) {
           final trimmedLine = line.trim();
 
-          if (trimmedLine.startsWith('6. 감정 분석:')) {
+          if (trimmedLine.startsWith('9. 감정 분석:') || trimmedLine.startsWith('9: 감정 분석:')) {
             final emotionStart = trimmedLine.indexOf(':') + 1;
             if (emotionStart > 0 && emotionStart < trimmedLine.length) {
               emotion = trimmedLine.substring(emotionStart).trim();
             }
-          } else if (trimmedLine.startsWith('7. 내일을 위한 팁:')) {
+          } else if (trimmedLine.startsWith('10. 내일을 위한 팁:') || trimmedLine.startsWith('10: 내일을 위한 팁:')) {
             final tipStart = trimmedLine.indexOf(':') + 1;
             if (tipStart > 0 && tipStart < trimmedLine.length) {
               tomorrowTips = trimmedLine.substring(tipStart)
@@ -398,6 +440,9 @@ class DiaryService {
         suggestedTags: tags.isNotEmpty ? tags : [category.korean],
         suggestedTheme: theme,
         suggestedStickers: stickers.isNotEmpty ? stickers : ['📝', '✨', '💫'],
+        backgroundColor: backgroundColor,
+        textColor: textColor,
+        accentColor: accentColor,
         categorySpecific: categorySpecific,
       );
     } catch (e) {
@@ -416,17 +461,34 @@ class DiaryService {
     );
   }
 
-  Future<DiaryDecoration> generateDecoration(DiaryTheme theme, List<String> stickers) async {
-    Map<String, String> themeColors = {
-      'minimal': '#FFFFFF,#000000',
-      'vintage': '#F5E6D3,#5D4E37',
-      'cute': '#FFE4E1,#FF69B4',
-      'professional': '#F0F0F0,#2C3E50',
-      'nature': '#E8F5E9,#2E7D32',
-      'cosmic': '#1A237E,#E1BEE7',
-    };
+  Future<DiaryDecoration> generateDecoration(
+    DiaryTheme theme,
+    List<String> stickers,
+    {String? aiBackgroundColor,
+    String? aiTextColor}
+  ) async {
+    // AI가 추천한 색상이 있으면 우선 사용, 없으면 테마 기반 색상 사용
+    String finalBackgroundColor;
+    String finalTextColor;
 
-    final colors = themeColors[theme.name]?.split(',') ?? ['#FFFFFF', '#000000'];
+    if (aiBackgroundColor != null && aiTextColor != null) {
+      // AI가 추천한 색상 사용
+      finalBackgroundColor = aiBackgroundColor;
+      finalTextColor = aiTextColor;
+    } else {
+      // 테마 기반 색상 사용
+      Map<String, String> themeColors = {
+        'minimal': '#FFFFFF,#000000',
+        'vintage': '#F5E6D3,#5D4E37',
+        'cute': '#FFE4E1,#FF69B4',
+        'professional': '#F0F0F0,#2C3E50',
+        'nature': '#E8F5E9,#2E7D32',
+        'cosmic': '#1A237E,#E1BEE7',
+      };
+      final colors = themeColors[theme.name]?.split(',') ?? ['#FFFFFF', '#000000'];
+      finalBackgroundColor = colors[0];
+      finalTextColor = colors[1];
+    }
 
     List<StickerPosition> stickerPositions = [];
     for (int i = 0; i < stickers.length && i < 5; i++) {
@@ -440,8 +502,8 @@ class DiaryService {
     }
 
     return DiaryDecoration(
-      backgroundColor: colors[0],
-      textColor: colors[1],
+      backgroundColor: finalBackgroundColor,
+      textColor: finalTextColor,
       borderStyle: theme == DiaryTheme.vintage ? 'dashed' : 'solid',
       stickerPositions: stickerPositions,
       customStyles: {
