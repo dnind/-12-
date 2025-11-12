@@ -1,0 +1,94 @@
+name: Android Release Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version name'
+        required: true
+        default: '1.0.0'
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: 'stable'
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build APK
+        run: flutter build apk --release
+
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', github.event.inputs.version) || github.ref }}
+          release_name: Release ${{ steps.version.outputs.version }}
+          body: |
+            ## 📱 Android APK 다운로드
+
+            아래 링크를 클릭하거나 QR 코드를 스캔하여 APK를 다운로드하세요.
+
+            ### 설치 방법
+            1. APK 파일 다운로드
+            2. Android 설정 > 보안 > "알 수 없는 출처" 허용
+            3. 다운로드한 APK 파일 실행
+
+            ### 변경사항
+            - Todo 리스트와 캘린더 통합
+            - Todo 삭제 기능 추가
+            - 문제은행 다이어리별 구분
+            - 다이어리 카테고리 필수 선택
+            - AI 분석 버튼 개선
+            - 다이어리 변경사항 감지
+            - 자동 새로고침 기능
+          draft: false
+          prerelease: false
+
+      - name: Upload APK to Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: build/app/outputs/flutter-apk/app-release.apk
+          asset_name: app-release.apk
+          asset_content_type: application/vnd.android.package-archive
+
+      - name: Generate QR Code for Download
+        run: |
+          DOWNLOAD_URL="${{ steps.create_release.outputs.html_url }}"
+          echo "📱 Release URL: $DOWNLOAD_URL"
+          echo "QR 코드 생성을 위한 URL을 출력했습니다."
+          echo "다음 사이트에서 QR 코드를 생성하세요: https://www.qr-code-generator.com/"
