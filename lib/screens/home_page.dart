@@ -33,12 +33,18 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
   DateTime? _filterDate; // 선택한 날짜
 
+  // Todo 변경 알림을 위한 ValueNotifier
+  final ValueNotifier<int> _todosChangedNotifier = ValueNotifier<int>(0);
+
   int get completedCount => todos.where((t) => t.done).length;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(() {
+      setState(() {}); // FAB 업데이트를 위한 리스너
+    });
     _restore();
     _initializeAdminIfNeeded();
   }
@@ -53,6 +59,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   void dispose() {
     _saveDailyProgressIfNeeded();
     _tabController.dispose();
+    _todosChangedNotifier.dispose();
     super.dispose();
   }
 
@@ -67,6 +74,10 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     final prefs = await SharedPreferences.getInstance();
     final jsonList = todos.map((t) => t.toMap()).toList();
     await prefs.setString('todos', jsonEncode(jsonList));
+
+    // Todo 변경 알림 - 캘린더에 즉시 반영
+    _todosChangedNotifier.value++;
+    print('홈: Todo 변경 알림 발송 (${_todosChangedNotifier.value})');
   }
 
   Future<void> _restore() async {
@@ -348,64 +359,67 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           const DiaryMainPage(),
         ],
       ),
-      floatingActionButton: Stack(
-        children: [
-          // 기존 + 버튼 (왼쪽 아래로 살짝 이동)
-          Positioned(
-            bottom: 16,
-            right: 80,
-            child: FloatingActionButton(
-              heroTag: "addButton",
-              onPressed: _handleAddButtonPress,
-              backgroundColor: Colors.indigo.shade400,
-              child: const Icon(Icons.add, color: Colors.white),
-            ),
-          ),
-
-          // ✅ 새 캘린더 버튼 (오른쪽 아래)
-          Positioned(
-            bottom: 16,
-            right: 16,
-            child: FloatingActionButton(
-              heroTag: "calendarButton",
-              backgroundColor: Colors.pinkAccent.shade200,
-              onPressed: () {
-                showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true, // 위로 쭉 올라오게
-                  backgroundColor: Colors.transparent, // 둥근 효과
-                  builder: (context) => FractionallySizedBox(
-                    heightFactor: 0.95, // 거의 전체 화면
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(25),
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.2),
-                            blurRadius: 10,
-                            offset: const Offset(0, -2),
-                          ),
-                        ],
-                      ),
-                      child: CalendarPage(
-                        onDateSelected: (selectedDate) {
-                          setState(() {
-                            _filterDate = selectedDate;
-                          });
-                        },
-                      ),
-                    ),
+      floatingActionButton: _tabController.index == 2
+          ? null // 다이어리 탭에서는 FAB 숨김 (다이어리 페이지가 자체 FAB 보유)
+          : Stack(
+              children: [
+                // 기존 + 버튼 (왼쪽 아래로 살짝 이동)
+                Positioned(
+                  bottom: 16,
+                  right: 80,
+                  child: FloatingActionButton(
+                    heroTag: "addButton",
+                    onPressed: _handleAddButtonPress,
+                    backgroundColor: Colors.indigo.shade400,
+                    child: const Icon(Icons.add, color: Colors.white),
                   ),
-                );
-              },
-              child: const Icon(Icons.calendar_month, color: Colors.white),
+                ),
+
+                // ✅ 새 캘린더 버튼 (오른쪽 아래)
+                Positioned(
+                  bottom: 16,
+                  right: 16,
+                  child: FloatingActionButton(
+                    heroTag: "calendarButton",
+                    backgroundColor: Colors.pinkAccent.shade200,
+                    onPressed: () {
+                      showModalBottomSheet(
+                        context: context,
+                        isScrollControlled: true, // 위로 쭉 올라오게
+                        backgroundColor: Colors.transparent, // 둥근 효과
+                        builder: (context) => FractionallySizedBox(
+                          heightFactor: 0.95, // 거의 전체 화면
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: const BorderRadius.vertical(
+                                top: Radius.circular(25),
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.2),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, -2),
+                                ),
+                              ],
+                            ),
+                            child: CalendarPage(
+                              onDateSelected: (selectedDate) {
+                                setState(() {
+                                  _filterDate = selectedDate;
+                                });
+                              },
+                              todosChangedNotifier: _todosChangedNotifier,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                    child: const Icon(Icons.calendar_month, color: Colors.white),
+                  ),
+                ),
+              ],
             ),
-          ),
-        ],
-      ),
     );
   }
 

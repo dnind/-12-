@@ -380,12 +380,14 @@ class _DiaryMainPageState extends State<DiaryMainPage> {
     );
   }
 
-  void _navigateToEditor(DiaryEntry? diary) {
-    Navigator.push(
+  void _navigateToEditor(DiaryEntry? diary) async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => DiaryEditorPage(diary: diary),
       ),
     );
+    // 에디터에서 돌아온 후 목록 새로고침
+    setState(() {});
   }
 }

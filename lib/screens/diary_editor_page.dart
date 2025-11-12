@@ -19,7 +19,7 @@ class _DiaryEditorPageState extends State<DiaryEditorPage> {
   final TextEditingController _contentController = TextEditingController();
   final TextEditingController _locationController = TextEditingController();
 
-  DiaryCategory _selectedCategory = DiaryCategory.daily;
+  DiaryCategory? _selectedCategory; // null로 시작 (선택 안 됨)
   DiaryTheme? _selectedTheme;
   DateTime _selectedDate = DateTime.now();
   List<String> _selectedStickers = [];
@@ -29,6 +29,15 @@ class _DiaryEditorPageState extends State<DiaryEditorPage> {
   bool _isAnalyzing = false;
   bool _isSaving = false;
   final int _minContentLength = 50;
+
+  // 원본 데이터 저장 (변경 감지용)
+  String _originalTitle = '';
+  String _originalContent = '';
+  String _originalLocation = '';
+  DiaryCategory? _originalCategory;
+  DateTime? _originalDate;
+  List<String> _originalTags = [];
+  List<String> _originalStickers = [];
 
   @override
   void initState() {
@@ -48,12 +57,43 @@ class _DiaryEditorPageState extends State<DiaryEditorPage> {
     _selectedStickers = List.from(diary.stickers);
     _tags = List.from(diary.tags);
 
+    // 원본 데이터 저장
+    _originalTitle = diary.title;
+    _originalContent = diary.content;
+    _originalLocation = diary.location ?? '';
+    _originalCategory = diary.category;
+    _originalDate = diary.date;
+    _originalTags = List.from(diary.tags);
+    _originalStickers = List.from(diary.stickers);
+
     if (diary.aiAnalysis != null) {
       _aiAnalysis = DiaryAIAnalysis.fromJson(diary.aiAnalysis!);
     }
     if (diary.decoration != null) {
       _decoration = DiaryDecoration.fromJson(diary.decoration!);
     }
+  }
+
+  // 변경사항이 있는지 확인
+  bool get _hasChanges {
+    if (widget.diary == null) return true; // 새 다이어리는 항상 저장 가능
+
+    return _titleController.text != _originalTitle ||
+        _contentController.text != _originalContent ||
+        _locationController.text != _originalLocation ||
+        _selectedCategory != _originalCategory ||
+        _selectedDate != _originalDate ||
+        !_listEquals(_tags, _originalTags) ||
+        !_listEquals(_selectedStickers, _originalStickers);
+  }
+
+  // 리스트 비교 헬퍼 함수
+  bool _listEquals(List<String> a, List<String> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
   }
 
   @override
@@ -86,11 +126,11 @@ class _DiaryEditorPageState extends State<DiaryEditorPage> {
               onPressed: _deleteDiary,
             ),
           TextButton(
-            onPressed: _isSaving ? null : _saveDiary,
+            onPressed: (_isSaving || !_hasChanges) ? null : _saveDiary,
             child: Text(
               '저장',
               style: TextStyle(
-                color: _isSaving ? Colors.grey : Colors.deepPurple,
+                color: (_isSaving || !_hasChanges) ? Colors.grey : Colors.deepPurple,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -254,6 +294,7 @@ class _DiaryEditorPageState extends State<DiaryEditorPage> {
           borderSide: const BorderSide(color: Colors.deepPurple, width: 2),
         ),
       ),
+      onChanged: (value) => setState(() {}), // 변경 감지를 위한 setState
     );
   }
 
@@ -292,6 +333,7 @@ class _DiaryEditorPageState extends State<DiaryEditorPage> {
     return TextField(
       controller: _locationController,
       style: TextStyle(color: textColor ?? Colors.black87),
+      onChanged: (value) => setState(() {}), // 변경 감지를 위한 setState
       decoration: InputDecoration(
         hintText: '위치 (선택사항)',
         hintStyle: TextStyle(color: (textColor ?? Colors.grey).withOpacity(0.5)),
@@ -622,10 +664,13 @@ class _DiaryEditorPageState extends State<DiaryEditorPage> {
   }
 
   Widget _buildFloatingButtons() {
+    // 새 다이어리 작성 중일 때는 AI 분석 버튼 숨김
+    final isNewDiary = widget.diary == null;
+
     return Column(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
-        if (_contentController.text.length >= _minContentLength && _aiAnalysis == null) ...[
+        if (!isNewDiary && _aiAnalysis == null) ...[
           FloatingActionButton(
             heroTag: 'analyze',
             onPressed: _isAnalyzing ? null : _analyzeDiary,
@@ -702,6 +747,13 @@ class _DiaryEditorPageState extends State<DiaryEditorPage> {
   }
 
   Future<void> _analyzeDiary() async {
+    if (_selectedCategory == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('카테고리를 먼저 선택해주세요 (공부/여행/일상)')),
+      );
+      return;
+    }
+
     if (_contentController.text.length < _minContentLength) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('최소 $_minContentLength자 이상 입력해주세요')),
@@ -714,8 +766,13 @@ class _DiaryEditorPageState extends State<DiaryEditorPage> {
     try {
       final analysis = await _diaryService.analyzeDiary(
         _contentController.text,
-        _selectedCategory,
+        _selectedCategory!,
       );
+
+      print('=== setState 호출 전 ===');
+      print('분석 결과 요약: ${analysis.summary}');
+      print('제안된 태그 개수: ${analysis.suggestedTags.length}');
+      print('제안된 스티커 개수: ${analysis.suggestedStickers.length}');
 
       setState(() {
         _aiAnalysis = analysis;
@@ -728,16 +785,29 @@ class _DiaryEditorPageState extends State<DiaryEditorPage> {
         _selectedTheme = analysis.suggestedTheme;
       });
 
+      print('=== setState 호출 후 ===');
+      print('_aiAnalysis null 여부: ${_aiAnalysis == null}');
+      print('태그 개수: ${_tags.length}');
+      print('스티커 개수: ${_selectedStickers.length}');
+      print('테마: $_selectedTheme');
+
       // AI 분석 후 자동 저장 (기존 다이어리인 경우만)
       if (widget.diary != null) {
+        print('기존 일기 - 자동 저장 시도');
         await _saveDiary();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('AI 분석이 완료되고 저장되었습니다!')),
-        );
+        print('자동 저장 완료');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('AI 분석이 완료되고 저장되었습니다!')),
+          );
+        }
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('AI 분석 완료! 저장 버튼을 눌러 저장하세요.')),
-        );
+        print('새 일기 - 저장하지 않음');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('AI 분석 완료! 저장 버튼을 눌러 저장하세요.')),
+          );
+        }
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -767,6 +837,13 @@ class _DiaryEditorPageState extends State<DiaryEditorPage> {
       return;
     }
 
+    if (_selectedCategory == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('카테고리를 선택해주세요 (공부/여행/일상)')),
+      );
+      return;
+    }
+
     setState(() => _isSaving = true);
 
     try {
@@ -776,7 +853,7 @@ class _DiaryEditorPageState extends State<DiaryEditorPage> {
         title: _titleController.text,
         content: _contentController.text,
         date: _selectedDate,
-        category: _selectedCategory,
+        category: _selectedCategory!,
         theme: _selectedTheme,
         stickers: _selectedStickers,
         aiAnalysis: _aiAnalysis?.toJson(),

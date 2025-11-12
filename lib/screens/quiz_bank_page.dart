@@ -11,7 +11,8 @@ class QuizBankPage extends StatefulWidget {
 
 class _QuizBankPageState extends State<QuizBankPage> {
   final DiaryService _diaryService = DiaryService();
-  List<QuizQuestion> _allQuizzes = [];
+  Map<String, List<QuizQuestion>> _quizzesByDiary = {}; // 다이어리별 문제 저장
+  Map<String, String> _diaryTitles = {}; // 다이어리 ID -> 제목 매핑
   List<QuizQuestion> _currentQuizzes = [];
   int _currentQuestionIndex = 0;
   int? _selectedAnswer;
@@ -20,6 +21,7 @@ class _QuizBankPageState extends State<QuizBankPage> {
   int _totalAnswered = 0;
   bool _isLoading = true;
   String _searchQuery = '';
+  String? _selectedDiaryId; // 선택된 다이어리 ID (null이면 전체)
 
   @override
   void initState() {
@@ -40,7 +42,8 @@ class _QuizBankPageState extends State<QuizBankPage> {
       final studyDiaries = allDiaries.where((diary) => diary.category == DiaryCategory.study).toList();
       print('공부 다이어리 개수: ${studyDiaries.length}');
 
-      List<QuizQuestion> allQuizzes = [];
+      Map<String, List<QuizQuestion>> quizzesByDiary = {};
+      Map<String, String> diaryTitles = {};
 
       for (final diary in studyDiaries) {
         print('다이어리 처리 중: ${diary.title}');
@@ -62,15 +65,9 @@ class _QuizBankPageState extends State<QuizBankPage> {
 
               print('퀴즈 문제 개수: ${studyAnalysis.quizQuestions.length}');
 
-              // 각 퀴즈에 출처 다이어리 정보 추가
-              for (final quiz in studyAnalysis.quizQuestions) {
-                allQuizzes.add(QuizQuestion(
-                  question: '[${diary.title}] ${quiz.question}',
-                  options: quiz.options,
-                  correctAnswerIndex: quiz.correctAnswerIndex,
-                  explanation: quiz.explanation,
-                ));
-              }
+              // 다이어리별로 문제 저장
+              quizzesByDiary[diary.id] = studyAnalysis.quizQuestions;
+              diaryTitles[diary.id] = diary.title;
             } catch (e) {
               print('StudyAnalysis 파싱 오류: $e');
             }
@@ -78,11 +75,12 @@ class _QuizBankPageState extends State<QuizBankPage> {
         }
       }
 
-      print('총 로드된 퀴즈 개수: ${allQuizzes.length}');
+      print('다이어리별 문제 개수: ${quizzesByDiary.length}');
 
       setState(() {
-        _allQuizzes = allQuizzes;
-        _currentQuizzes = List.from(allQuizzes);
+        _quizzesByDiary = quizzesByDiary;
+        _diaryTitles = diaryTitles;
+        _updateCurrentQuizzes();
         _isLoading = false;
       });
     } catch (e) {
@@ -96,13 +94,35 @@ class _QuizBankPageState extends State<QuizBankPage> {
     }
   }
 
+  void _updateCurrentQuizzes() {
+    List<QuizQuestion> quizzes = [];
+
+    if (_selectedDiaryId == null) {
+      // 모든 다이어리의 문제를 합침
+      for (var diaryQuizzes in _quizzesByDiary.values) {
+        quizzes.addAll(diaryQuizzes);
+      }
+      // 랜덤으로 섞기
+      quizzes.shuffle();
+    } else {
+      // 선택된 다이어리의 문제만
+      quizzes = List.from(_quizzesByDiary[_selectedDiaryId] ?? []);
+    }
+
+    setState(() {
+      _currentQuizzes = quizzes;
+      _currentQuestionIndex = 0;
+      _resetQuizState();
+    });
+  }
+
   void _filterQuizzes(String query) {
     setState(() {
       _searchQuery = query;
-      if (query.isEmpty) {
-        _currentQuizzes = List.from(_allQuizzes);
-      } else {
-        _currentQuizzes = _allQuizzes
+      _updateCurrentQuizzes();
+
+      if (query.isNotEmpty) {
+        _currentQuizzes = _currentQuizzes
             .where((quiz) =>
                 quiz.question.toLowerCase().contains(query.toLowerCase()) ||
                 quiz.explanation.toLowerCase().contains(query.toLowerCase()))
@@ -114,26 +134,40 @@ class _QuizBankPageState extends State<QuizBankPage> {
   }
 
   void _selectAnswer(int answerIndex) {
+    print('=== 답 선택 ===');
+    print('선택된 답: $answerIndex');
+    print('이미 정답 표시됨: $_showAnswer');
+
     if (_showAnswer) return;
 
     setState(() {
       _selectedAnswer = answerIndex;
     });
+
+    print('setState 후 선택된 답: $_selectedAnswer');
   }
 
   void _showAnswerAndExplanation() {
+    print('=== 정답 확인 버튼 클릭 ===');
+    print('현재 선택된 답: $_selectedAnswer');
+
     if (_selectedAnswer == null) {
+      print('답이 선택되지 않음 - SnackBar 표시');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('답을 선택해주세요')),
       );
       return;
     }
 
+    print('정답 표시 진행');
     setState(() {
       _showAnswer = true;
       _totalAnswered++;
       if (_selectedAnswer == _currentQuizzes[_currentQuestionIndex].correctAnswerIndex) {
         _correctAnswers++;
+        print('정답!');
+      } else {
+        print('오답!');
       }
     });
   }
@@ -194,7 +228,7 @@ class _QuizBankPageState extends State<QuizBankPage> {
   }
 
   Widget _buildQuizContent() {
-    if (_allQuizzes.isEmpty) {
+    if (_quizzesByDiary.isEmpty) {
       return _buildEmptyState();
     }
 
@@ -204,11 +238,66 @@ class _QuizBankPageState extends State<QuizBankPage> {
 
     return Column(
       children: [
+        _buildDiarySelector(),
         _buildSearchBar(),
         _buildProgressIndicator(),
         Expanded(child: _buildQuizCard()),
         _buildNavigationButtons(),
       ],
+    );
+  }
+
+  Widget _buildDiarySelector() {
+    return Container(
+      height: 60,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: [
+          // 전체 문제 버튼
+          _buildDiarySelectorChip(null, '🎲 랜덤 (전체)', Colors.purple),
+          const SizedBox(width: 8),
+          // 각 다이어리별 버튼
+          ..._diaryTitles.entries.map((entry) =>
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: _buildDiarySelectorChip(entry.key, entry.value, Colors.blue),
+              ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDiarySelectorChip(String? diaryId, String label, Color color) {
+    final isSelected = _selectedDiaryId == diaryId;
+    final quizCount = diaryId == null
+        ? _quizzesByDiary.values.fold<int>(0, (sum, list) => sum + list.length)
+        : (_quizzesByDiary[diaryId]?.length ?? 0);
+
+    return FilterChip(
+      label: Text('$label ($quizCount)'),
+      selected: isSelected,
+      onSelected: (selected) {
+        setState(() {
+          _selectedDiaryId = selected ? diaryId : null;
+          _updateCurrentQuizzes();
+          _resetAllProgress();
+        });
+      },
+      backgroundColor: Colors.white,
+      selectedColor: color.withOpacity(0.2),
+      labelStyle: TextStyle(
+        color: isSelected ? color : Colors.black87,
+        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(
+          color: isSelected ? color : Colors.grey.shade300,
+          width: isSelected ? 2 : 1,
+        ),
+      ),
     );
   }
 
@@ -353,11 +442,12 @@ class _QuizBankPageState extends State<QuizBankPage> {
       child: Card(
         elevation: 4,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
               Text(
                 '문제',
                 style: TextStyle(
@@ -517,6 +607,7 @@ class _QuizBankPageState extends State<QuizBankPage> {
                 ),
               ],
             ],
+            ),
           ),
         ),
       ),

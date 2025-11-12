@@ -86,6 +86,16 @@ class TodoTile extends StatelessWidget {
                     color: todo.done ? Colors.green : Colors.grey,
                   ),
                 ),
+
+                // 삭제 버튼
+                IconButton(
+                  tooltip: '삭제',
+                  onPressed: onDelete,
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    color: Colors.red,
+                  ),
+                ),
               ],
             ),
             

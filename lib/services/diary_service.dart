@@ -143,7 +143,14 @@ class DiaryService {
 
       print('=== AI 응답 ===');
       print('응답 길이: ${responseText.length}자');
-      print('응답 내용: $responseText');
+      print('응답 내용 (전체):');
+      // Flutter print는 긴 문자열을 자르므로 여러 부분으로 나눠 출력
+      final chunkSize = 800;
+      for (var i = 0; i < responseText.length; i += chunkSize) {
+        final end = (i + chunkSize < responseText.length) ? i + chunkSize : responseText.length;
+        print('청크 ${i ~/ chunkSize + 1}: ${responseText.substring(i, end)}');
+      }
+      print('=== 응답 끝 ===');
 
       final analysis = _parseAIResponse(responseText, category);
       print('=== 파싱 결과 ===');
@@ -180,7 +187,13 @@ class DiaryService {
 1. 요약: [다이어리 내용의 핵심을 2-3문장으로 구체적으로 요약해주세요]
 2. 조언: [작성자의 상황에 맞는 구체적이고 실용적인 조언을 3문장 이상 작성해주세요]
 3. 추천 태그: [내용에서 추출한 핵심 키워드 5-7개를 쉼표로 구분해주세요]
-4. 추천 테마: [minimal, vintage, cute, professional, nature, cosmic 중 정확히 하나만 선택해주세요]
+4. 추천 테마: [다음 테마 중 정확히 하나만 선택해주세요]
+   - minimal: 심플하고 미니멀한 스타일 (흰색/검정)
+   - vintage: 빈티지하고 따뜻한 느낌 (베이지/갈색) - 여행, 추억에 적합
+   - cute: 귀엽고 사랑스러운 분위기 (핑크) - 연애, 기념일에 적합
+   - professional: 전문적이고 깔끔한 느낌 (회색/청회색) - 업무, 성장에 적합
+   - nature: 자연스럽고 편안한 분위기 (초록) - 여행, 일상에 적합
+   - cosmic: 우주적이고 신비로운 느낌 (보라/남색) - 성찰, 철학에 적합
 5. 추천 스티커: [내용의 감정과 분위기에 맞는 이모지 5-8개를 쉼표로 구분해주세요]
 ''';
 
@@ -291,34 +304,40 @@ class DiaryService {
                   .where((p) => p.isNotEmpty)
                   .toList();
             }
-          } else if (trimmedLine.contains('첫 번째 문제:') || trimmedLine.contains('두 번째 문제:')) {
+          } else if (trimmedLine.contains('첫 번째 문제:') || trimmedLine.contains('두 번째 문제:') || (trimmedLine.startsWith('-') && trimmedLine.contains('|'))) {
             print('퀴즈 파싱 시도: $trimmedLine');
-            final colonIndex = trimmedLine.indexOf(':');
-            if (colonIndex != -1 && colonIndex < trimmedLine.length - 1) {
-              final questionData = trimmedLine.substring(colonIndex + 1).trim();
-              print('퀴즈 데이터: $questionData');
-              final parts = questionData.split('|');
-              print('파싱된 부분 개수: ${parts.length}');
-              if (parts.length >= 7) {
-                try {
-                  quizQuestions.add(QuizQuestion(
-                    question: parts[0].trim(),
-                    options: [
-                      parts[1].trim(),
-                      parts[2].trim(),
-                      parts[3].trim(),
-                      parts[4].trim(),
-                    ],
-                    correctAnswerIndex: int.parse(parts[5].trim()) - 1,
-                    explanation: parts[6].trim(),
-                  ));
-                  print('퀴즈 문제 추가 성공');
-                } catch (e) {
-                  print('Error parsing quiz question: $e');
-                }
-              } else {
-                print('퀴즈 부분이 부족함: ${parts.length}개 (최소 7개 필요)');
+
+            String questionData;
+            if (trimmedLine.contains(':')) {
+              final colonIndex = trimmedLine.indexOf(':');
+              questionData = trimmedLine.substring(colonIndex + 1).trim();
+            } else {
+              // "   - 질문|선택지..." 형식
+              questionData = trimmedLine.substring(trimmedLine.indexOf('-') + 1).trim();
+            }
+
+            print('퀴즈 데이터: $questionData');
+            final parts = questionData.split('|');
+            print('파싱된 부분 개수: ${parts.length}');
+            if (parts.length >= 7) {
+              try {
+                quizQuestions.add(QuizQuestion(
+                  question: parts[0].trim(),
+                  options: [
+                    parts[1].trim(),
+                    parts[2].trim(),
+                    parts[3].trim(),
+                    parts[4].trim(),
+                  ],
+                  correctAnswerIndex: int.parse(parts[5].trim()) - 1,
+                  explanation: parts[6].trim(),
+                ));
+                print('퀴즈 문제 추가 성공');
+              } catch (e) {
+                print('Error parsing quiz question: $e');
               }
+            } else {
+              print('퀴즈 부분이 부족함: ${parts.length}개 (최소 7개 필요)');
             }
           }
         }
@@ -420,7 +439,7 @@ class DiaryService {
     Map<String, String> themeColors = {
       'minimal': '#FFFFFF,#000000',
       'vintage': '#F5E6D3,#5D4E37',
-      'cute': '#FFE4E1,#FF69B4',
+      'cute': '#FFF0F5,#D8537F',  // 더 부드러운 핑크
       'professional': '#F0F0F0,#2C3E50',
       'nature': '#E8F5E9,#2E7D32',
       'cosmic': '#1A237E,#E1BEE7',
