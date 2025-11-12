@@ -31,6 +31,15 @@ jobs:
         with:
           channel: 'stable'
 
+      - name: Create API keys file
+        run: |
+          mkdir -p lib/config
+          cat > lib/config/api_keys.dart << 'EOF'
+          class ApiKeys {
+            static const String geminiApiKey = 'AIzaSyBZ2_ZfWq7tCiPHHIwEGww5SHYUFlrmHMg';
+          }
+          EOF
+
       - name: Get dependencies
         run: flutter pub get
 
