@@ -38,6 +38,7 @@ class _DiaryEditorPageState extends State<DiaryEditorPage> {
   DateTime? _originalDate;
   List<String> _originalTags = [];
   List<String> _originalStickers = [];
+  DiaryDecoration? _originalDecoration;
 
   @override
   void initState() {
@@ -71,6 +72,7 @@ class _DiaryEditorPageState extends State<DiaryEditorPage> {
     }
     if (diary.decoration != null) {
       _decoration = DiaryDecoration.fromJson(diary.decoration!);
+      _originalDecoration = DiaryDecoration.fromJson(diary.decoration!);
     }
   }
 
@@ -78,13 +80,24 @@ class _DiaryEditorPageState extends State<DiaryEditorPage> {
   bool get _hasChanges {
     if (widget.diary == null) return true; // 새 다이어리는 항상 저장 가능
 
+    // Decoration 변경 체크
+    bool decorationChanged = false;
+    if (_decoration != null && _originalDecoration != null) {
+      decorationChanged = _decoration!.backgroundColor != _originalDecoration!.backgroundColor ||
+          _decoration!.textColor != _originalDecoration!.textColor ||
+          _decoration!.borderStyle != _originalDecoration!.borderStyle;
+    } else if (_decoration != _originalDecoration) {
+      decorationChanged = true;
+    }
+
     return _titleController.text != _originalTitle ||
         _contentController.text != _originalContent ||
         _locationController.text != _originalLocation ||
         _selectedCategory != _originalCategory ||
         _selectedDate != _originalDate ||
         !_listEquals(_tags, _originalTags) ||
-        !_listEquals(_selectedStickers, _originalStickers);
+        !_listEquals(_selectedStickers, _originalStickers) ||
+        decorationChanged;
   }
 
   // 리스트 비교 헬퍼 함수
