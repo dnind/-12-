@@ -144,6 +144,7 @@ class _DiaryMainPageState extends State<DiaryMainPage> {
 
   Widget _buildDiaryList() {
     return FutureBuilder<List<DiaryEntry>>(
+      key: ValueKey('diary-list-${_selectedCategory?.name ?? 'all'}-$_searchQuery'),
       future: _loadDiaries(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {

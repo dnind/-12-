@@ -142,6 +142,9 @@ class DiaryAIAnalysis {
   final List<String> suggestedTags;
   final DiaryTheme suggestedTheme;
   final List<String> suggestedStickers;
+  final String? backgroundColor;
+  final String? textColor;
+  final String? accentColor;
   final Map<String, dynamic>? categorySpecific;
 
   DiaryAIAnalysis({
@@ -150,6 +153,9 @@ class DiaryAIAnalysis {
     this.suggestedTags = const [],
     required this.suggestedTheme,
     this.suggestedStickers = const [],
+    this.backgroundColor,
+    this.textColor,
+    this.accentColor,
     this.categorySpecific,
   });
 
@@ -163,6 +169,9 @@ class DiaryAIAnalysis {
         orElse: () => DiaryTheme.minimal,
       ),
       suggestedStickers: List<String>.from(json['suggestedStickers'] ?? []),
+      backgroundColor: json['backgroundColor'],
+      textColor: json['textColor'],
+      accentColor: json['accentColor'],
       categorySpecific: json['categorySpecific'],
     );
   }
@@ -174,6 +183,9 @@ class DiaryAIAnalysis {
       'suggestedTags': suggestedTags,
       'suggestedTheme': suggestedTheme.name,
       'suggestedStickers': suggestedStickers,
+      'backgroundColor': backgroundColor,
+      'textColor': textColor,
+      'accentColor': accentColor,
       'categorySpecific': categorySpecific,
     };
   }

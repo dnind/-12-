@@ -1,0 +1,243 @@
+# AI 다이어리 프로젝트 부가설명
+
+## 1. 데이터셋 구성
+
+본 프로젝트는 Google Gemini 2.0 Flash API를 활용한 실시간 AI 분석 시스템입니다.
+
+### 입력 데이터
+- 사용자 작성 다이어리 텍스트 (최소 50자)
+- 카테고리 정보 (학습/여행/일상)
+- 작성 날짜 및 위치 정보
+
+### AI 분석 데이터 구조
+- **공통 분석**: 요약, 조언, 추천 태그(색상 키워드 포함), 테마, 스티커, 배경색/텍스트색/강조색
+- **카테고리별 특화 데이터**:
+  * 학습: 핵심 포인트 추출, 4지선다 퀴즈 2문제 자동 생성 (문제/선택지/정답/해설)
+  * 여행: 언급된 장소 추출, 관련 관광지 추천
+  * 일상: 감정 분석(긍정/중립/부정), 다음날을 위한 실천 팁
+
+### 저장 방식
+- SharedPreferences 기반 로컬 저장소 (웹 환경 지원)
+- JSON 직렬화를 통한 구조화된 데이터 관리
+
+
+## 2. 구현 난이도가 높았던 부분
+
+### (1) AI 프롬프트 엔지니어링 ⭐⭐⭐⭐⭐
+**난이도**: 매우 높음
+
+**핵심 도전 과제**:
+Gemini API는 구조화된 JSON 대신 자유 형식의 텍스트로 응답하기 때문에, AI가 정확한 형식을 지키도록 유도하는 것이 가장 큰 난제였습니다.
+
+**해결 전략**:
+```
+1. 번호 기반 구조화: "1. 요약:", "2. 조언:" 등 명확한 번호 체계
+2. 구분자 명시: 퀴즈 문제의 경우 "|" 기호로 데이터 구분 지시
+3. 구체적 예시 제공: 실제 출력 예시를 프롬프트에 포함
+4. 경고 메시지 추가: "⚠️ 중요: 아래 형식을 정확히 지켜주세요!" 강조
+```
+
+**프레임워크 활용**:
+- `google_generative_ai` 패키지를 통한 Gemini API 통합
+- 프롬프트 설계에서 Few-shot Learning 기법 적용
+
+**📍 코드 위치**:
+- **파일**: `lib/services/diary_service.dart`
+- **프롬프트 생성 함수**: `_buildAnalysisPrompt()` (165~235줄)
+  - 기본 프롬프트 구조: 166~188줄
+  - 학습 카테고리 프롬프트: 191~209줄 (퀴즈 형식 예시 포함: 204~206줄)
+  - 여행 카테고리 프롬프트: 211~221줄
+  - 일상 카테고리 프롬프트: 213~222줄
+- **API 호출**: `analyzeDiary()` 함수 (116~163줄)
+  - Gemini API 호출: 130~135줄
+  - 타임아웃 설정: 130~134줄
+
+
+### (2) 텍스트 응답 파싱 알고리즘 ⭐⭐⭐⭐
+**난이도**: 높음
+
+**기술적 도전**:
+AI의 자유 형식 텍스트 응답을 Dart 객체로 변환하는 견고한 파싱 알고리즘 설계가 필요했습니다.
+
+**구현한 알고리즘**:
+```dart
+1. 라인 분할: 응답을 줄 단위로 분리
+2. 정규식 패턴 매칭:
+   - 색상 코드: RegExp(r'#[0-9A-Fa-f]{6}')
+   - 퀴즈 구조: "첫 번째 문제:" 또는 "두 번째 문제:" 탐지
+3. 인덱스 기반 파싱:
+   - "1. 요약:", "2. 조언:" 등의 접두사 위치 계산
+   - substring()을 통한 데이터 추출
+4. 에러 핸들링: 파싱 실패 시 기본값 반환 (Fallback 패턴)
+```
+
+**핵심 코드 로직**:
+```dart
+// 퀴즈 문제 파싱 예시
+if (trimmedLine.contains('첫 번째 문제:')) {
+  final questionData = trimmedLine.substring(colonIndex + 1).trim();
+  final parts = questionData.split('|');  // 구분자로 분리
+  if (parts.length >= 7) {  // 7개 필드 검증
+    quizQuestions.add(QuizQuestion(
+      question: parts[0].trim(),
+      options: [parts[1], parts[2], parts[3], parts[4]],
+      correctAnswerIndex: int.parse(parts[5]) - 1,
+      explanation: parts[6].trim(),
+    ));
+  }
+}
+```
+
+**📍 코드 위치**:
+- **파일**: `lib/services/diary_service.dart`
+- **파싱 메인 함수**: `_parseAIResponse()` (237~444줄)
+  - 라인 분할 및 초기화: 239~249줄
+  - 기본 항목 파싱 (요약, 조언, 태그, 테마, 스티커): 252~279줄
+  - **색상 HEX 코드 파싱**: 280~307줄
+    * 배경색 정규식 매칭: 285~288줄
+    * 텍스트색 정규식 매칭: 294~297줄
+    * 강조색 정규식 매칭: 303~306줄
+  - **학습 카테고리 특화 파싱**: 312~365줄
+    * 핵심 포인트 파싱: 319~327줄
+    * 퀴즈 문제 파싱: 328~358줄 (구분자 split 로직)
+  - **여행 카테고리 특화 파싱**: 366~399줄
+  - **일상 카테고리 특화 파싱**: 399~427줄
+  - DiaryAIAnalysis 객체 생성: 429~439줄
+  - 에러 핸들링 (Fallback): 440~443줄
+
+
+### (3) 카테고리별 동적 분석 시스템 ⭐⭐⭐⭐
+**난이도**: 높음
+
+**설계 패턴**:
+- **Strategy Pattern** 적용: 각 카테고리(학습/여행/일상)마다 다른 프롬프트와 파싱 로직 구현
+- **Factory Pattern**: `categorySpecific` 필드에 동적으로 타입 결정
+
+**알고리즘 흐름**:
+```
+1. 카테고리 감지 → 2. 맞춤 프롬프트 생성
+→ 3. AI 응답 수신 → 4. 카테고리별 파서 분기
+→ 5. 타입 안전 객체 생성 (StudyAnalysis/TravelAnalysis/DailyAnalysis)
+```
+
+**📍 코드 위치**:
+- **파일**: `lib/services/diary_service.dart`
+- **카테고리 분기 로직**: `_buildAnalysisPrompt()` 함수 내 switch 문 (190~224줄)
+  - case DiaryCategory.study: 191~209줄
+  - case DiaryCategory.travel: 211~221줄
+  - case DiaryCategory.daily: 213~222줄
+- **파싱 분기 로직**: `_parseAIResponse()` 함수 내 (312~427줄)
+  - 학습 분석 객체 생성: 360~365줄 (StudyAnalysis)
+  - 여행 분석 객체 생성: 394~398줄 (TravelAnalysis)
+  - 일상 분석 객체 생성: 423~426줄 (Map<String, dynamic>)
+- **데이터 모델**: `lib/models/diary_models.dart`
+  - StudyAnalysis 클래스: 약 60~80줄
+  - TravelAnalysis 클래스: 약 85~105줄
+  - QuizQuestion 클래스: 약 110~130줄
+
+
+### (4) 실시간 UI 업데이트 및 상태 관리 ⭐⭐⭐
+**난이도**: 중상
+
+**Flutter 상태 관리 전략**:
+- `setState()` 기반 리액티브 UI
+- AI 분석 → 자동 꾸미기 적용 → 화면 재렌더링 파이프라인 구축
+- `_buildDecoratedView()` / `_buildNormalView()` 조건부 렌더링
+
+**📍 코드 위치**:
+- **파일**: `lib/screens/diary_editor_page.dart`
+- **AI 분석 트리거**: `_analyzeDiary()` 함수 (704~749줄)
+  - 분석 시작 및 로딩 상태: 712줄 (setState)
+  - AI 서비스 호출: 715~718줄
+  - 상태 업데이트 및 데이터 병합: 720~729줄
+  - **자동 꾸미기 적용**: 732줄 (`await _applyDecoration()`)
+  - 저장 및 알림: 735~744줄
+- **꾸미기 적용**: `_applyDecoration()` 함수 (751~762줄)
+  - AI 색상 우선 적용 로직: 757~758줄
+  - decoration 객체 생성 및 setState: 761줄
+- **조건부 렌더링**: `build()` 함수 (68~103줄)
+  - 뷰 선택 로직: 100줄 (`_decoration != null ? _buildDecoratedView() : _buildNormalView()`)
+  - Decorated View: 135~169줄 (배경색/텍스트색 적용)
+  - Normal View: 105~133줄 (기본 화이트 배경)
+- **Floating Action Buttons**: `_buildFloatingButtons()` (624~658줄)
+  - AI 분석 버튼 표시 조건: 628줄
+  - 꾸미기 버튼 표시 조건: 639줄
+  - 리셋 버튼: 648줄
+
+
+### (5) 추가 구현 세부사항
+
+#### 문제은행 시스템
+**📍 코드 위치**: `lib/screens/quiz_bank_page.dart`
+- 퀴즈 로딩: `_loadQuizzes()` 함수 (30~97줄)
+  - 다이어리 필터링 (공부 카테고리만): 40줄
+  - AI 분석 데이터 추출: 49~79줄
+  - StudyAnalysis 파싱: 59~61줄
+- 퀴즈 UI 렌더링: `_buildQuizCard()` (348~524줄)
+  - 선택지 색상 로직: 385~403줄
+  - 정답 확인 및 해설 표시: 460~497줄
+
+#### 배경색 자동 적용 시스템
+**📍 코드 위치**: `lib/services/diary_service.dart`
+- 색상 생성: `generateDecoration()` 함수 (456~506줄)
+  - AI 색상 우선 사용: 466~469줄
+  - 테마 기반 대체 색상: 471~483줄
+  - 스티커 위치 계산: 485~494줄
+- HEX to Color 변환: `lib/screens/diary_editor_page.dart`
+  - 136~137줄: `Color(int.parse(_decoration!.backgroundColor.replaceAll('#', '0xFF')))`
+- 카드 뷰 색상 적용: `lib/screens/diary_main_page.dart`
+  - 다이어리 카드: 254~256줄 (배경색)
+  - 테두리 색상: 244~252줄
+
+#### 캘린더 연동
+**📍 코드 위치**: `lib/screens/calender_page.dart`
+- SharedPreferences 통합: `_loadAllTodos()` (28~51줄)
+  - Todo 데이터 로딩: 29~38줄
+  - 날짜별 그룹화: 40~48줄
+- 날짜 클릭 이벤트: `_showDaySchedule()` (54~93줄)
+  - 일정 모달 표시: 58~92줄
+
+
+## 3. 기술 스택 요약
+
+### AI/ML
+- **Google Gemini 2.0 Flash**: 초당 4백만 토큰 처리 속도, 멀티모달 AI
+- **프롬프트 엔지니어링**: Few-shot Learning, Chain-of-Thought 기법
+
+### 프레임워크/라이브러리
+- **Flutter**: 크로스 플랫폼 UI (Web 환경 실행)
+- **google_generative_ai**: Gemini API Dart 클라이언트
+- **SharedPreferences**: 로컬 저장소
+- **table_calendar**: 일정 시각화
+
+### 핵심 알고리즘
+1. **텍스트 파싱 알고리즘**: 정규식 + 인덱스 기반 데이터 추출
+2. **색상 추출 알고리즘**: HEX 코드 정규식 매칭
+3. **퀴즈 생성 파이프라인**: 프롬프트 → 파싱 → 검증 → 저장
+
+
+## 4. 핵심 코드 위치 요약 (발표 참조용)
+
+### 가장 중요한 3개 파일:
+1. **`lib/services/diary_service.dart`** (556줄)
+   - AI 프롬프트 생성 (165~235줄)
+   - AI 응답 파싱 알고리즘 (237~444줄)
+   - 색상 정규식 매칭 (280~307줄)
+
+2. **`lib/screens/diary_editor_page.dart`** (842줄)
+   - AI 분석 트리거 (704~749줄)
+   - 자동 꾸미기 적용 (732줄, 751~762줄)
+   - 배경색 실시간 적용 (135~169줄)
+
+3. **`lib/screens/quiz_bank_page.dart`** (568줄)
+   - 퀴즈 데이터 로딩 및 필터링 (30~97줄)
+   - 퀴즈 UI 렌더링 (348~524줄)
+
+
+## 5. 결론
+
+본 프로젝트의 핵심은 **"비구조화된 AI 응답을 구조화된 앱 데이터로 변환"**하는 것이었습니다.
+정교한 프롬프트 엔지니어링과 견고한 파싱 알고리즘을 통해 AI의 창의성과 앱의 안정성을 동시에 달성했습니다.
+
+특히 **정규식 패턴 매칭**, **구분자 기반 데이터 분할**, **Strategy Pattern**을 활용한 카테고리별 분기 처리가
+프로젝트의 기술적 차별점이며, Flutter와 Gemini AI의 결합을 통해 실시간 분석 및 시각화를 구현했습니다.
